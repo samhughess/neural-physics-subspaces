@@ -25,8 +25,37 @@ def make_body(file, density, scale):
     v, f = igl.read_triangle_mesh(file)
     v = scale*v
 
-    vol = igl.massmatrix(v,f).data
-    vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
+    # Initialize a variable to calculate the total center of mass
+    total_mass = 0
+
+    # Initialize the center of mass coordinates
+    c = ([0.0, 0.0, 0.0])
+
+    # Iterate over each face of the mesh
+    for face in f:
+        # Get the vertices of the face
+        v0, v1, v2 = v[face]
+
+        # Calculate the area of the face
+        area = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0))
+
+        # Calculate the centroid of the face
+        centroid = (v0 + v1 + v2) / 3.0
+
+        # Update the total mass and center of mass
+        total_mass += area
+        center_of_mass += area * centroid
+
+    # Calculate the final center of mass coordinates
+    center_of_mass /= total_mass
+
+    print(center_of_mass)
+    print(np.sum(vol))
+    #vol = igl.massmatrix(v,f).data
+    #vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
+
+    #c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
+    v = v - center_of_mass
 
     c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
     v = v - c
