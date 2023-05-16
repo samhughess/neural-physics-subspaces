@@ -351,8 +351,12 @@ class Aircraft:
 
             # Compute the relative velocity between the body and the wind
             body_velocity = q_dotR
-            relative_velocity = body_velocity - wind_velocity
+            relative_velocity_old = body_velocity - wind_velocity
             #relative_velocity = relative_vel.reshape(-1,3)
+            relative_velocity = jnp.reshape(relative_velocity_old, (4,3))
+            rel_vel = relative_velocity[:,:]
+            print(rel_vel.shape)
+
 
             # Compute the surface area of each triangle face
             v0 = v[f[:,0]]
@@ -398,8 +402,8 @@ class Aircraft:
                 lift_coefficient = 1.0
                 drag_coefficient = 0.2
                 # Compute the lift and drag forces
-                lift_force = 0.5 * air_density * face_areas * lift_coefficient * jnp.abs(relative_velocity).dot(face_normal) * face_normal
-                drag_force = 0.5 * air_density * face_areas * drag_coefficient * relative_velocity.dot(face_normal) * face_normal
+                lift_force = 0.5 * air_density * face_areas * lift_coefficient * jnp.dot(jnp.dot(jnp.abs(relative_velocity),face_normal),face_normal)
+                drag_force = 0.5 * air_density * face_areas * drag_coefficient * jnp.dot(jnp.dot(relative_velocity,face_normal),face_normal)
 
                 # Accumulate the forces for each vertex
                 for vertex_index in face:

@@ -3,7 +3,6 @@ import jax
 # imports from this project
 from fem_model import FEMSystem
 from rigid3d_model import Rigid3DSystem
-from rigid3d_airplane import Aircraft
 
 
 ### Set up the argument parser
@@ -51,7 +50,6 @@ def build_proximal_network_filename_(prefix, system_name, problem_name, subspace
 system_class_registry = {
         'fem' : FEMSystem,
         'rigid3d' : Rigid3DSystem,
-        'airplane' : Aircraft,
     }
 
 def construct_system_from_name(system_name, problem_name):
