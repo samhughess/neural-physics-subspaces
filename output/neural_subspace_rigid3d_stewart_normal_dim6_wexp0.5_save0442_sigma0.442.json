@@ -1,0 +1,1 @@
+{"in_dim": 6, "out_dim": 156, "model_type": "SubspaceMLP", "activation": "ELU", "MLP_hidden_layers": 5, "MLP_hidden_layer_width": 64}

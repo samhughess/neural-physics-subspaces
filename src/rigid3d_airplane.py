@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from jax import grad, jit, vmap
-import fixed_point_projection
+#import fixed_point_projection
 import numpy as np
 import os
 import polyscope as ps
@@ -8,7 +8,7 @@ import polyscope.imgui as psim
 
 import scipy.constants
 
-from scipy.spatial.transform import Rotation
+import scipy.spatial.transform as transform
 
 
 try:
@@ -29,7 +29,7 @@ def make_body(file, density, scale):
     total_mass = 0
 
     # Initialize the center of mass coordinates
-    c = ([0.0, 0.0, 0.0])
+    center_of_mass = ([0.0, 0.0, 0.0])
 
     # Iterate over each face of the mesh
     for face in f:
@@ -49,23 +49,22 @@ def make_body(file, density, scale):
     # Calculate the final center of mass coordinates
     center_of_mass /= total_mass
 
-    print(center_of_mass)
-    print(np.sum(vol))
     #vol = igl.massmatrix(v,f).data
     #vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
 
     #c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
     v = v - center_of_mass
 
-    c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
-    v = v - c
+    #c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
+    #c = np.sum(vol[:, None]*v[:vol.shape[0]], axis=0) / np.sum(vol)
+    #v = v - c
 
     W = np.c_[v, np.ones(v.shape[0])]
-    mass = np.matmul(W.T, vol[:,None]*W) * density
+    #mass = np.matmul(W.T, vol[:,None]*W) * density
 
-    x0 = jnp.array( [[1, 0, 0],[0, 1, 0],[0, 0, 1], c] )
+    x0 = jnp.array( [[1, 0, 0],[0, 1, 0],[0, 0, 1], center_of_mass] )
 
-    body = {'v': v, 'f': f, 'W':W, 'x0': x0, 'mass': mass }
+    body = {'v': v, 'f': f, 'W':W, 'x0': x0, 'mass': total_mass }
     return body
 
 def make_joint( b0, b1, bodies, joint_pos_world, joint_vec_world ):
@@ -201,7 +200,7 @@ class Aircraft:
 
         bodies = []
         joint_list = []
-        numBodiesFixed = 0
+        numBodiesFixed = 1
 
         if problem_name == 'generic airplane':
             scale = 1
@@ -209,7 +208,7 @@ class Aircraft:
             # Add all the necessary bodies
             bodies.append( make_body( os.path.join(".", "data", "Glider.obj"), 1000, scale))
             
-            numBodiesFixed = 0
+            numBodiesFixed = 1
 
             # Add all the necessary joints
             #joint_list.append( make_joint(0, -1, bodies, jnp.array([ 0, 0.08 ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ))
@@ -289,28 +288,35 @@ class Aircraft:
         return energy
     
     def kinetic_energy(self, system_def, q, q_dot):
+        distance = {}
+        speed = {}
+
+        qr = q.reshape(-1,4,3)
+        #print(qr.shape)
+        
         q_dotR = q_dot.reshape(-1,4,3)
+        #print(q_dotR.shape)
         massR = system_def['mass'].reshape(-1,4,4)
         
         A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_dotR
         Ke_motion = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
 
         thrust_force =  system_def['external_forces']['thrust_force']
-        distance = distance.append(q)
-        speed = speed.append(q_dot)
-        displacement = np.subtract(distance[-1], distance[-2])
-        speed_change = np.subtract(speed[-1], speed[-2])
-        Ke_thrust = self.calculate_thrust_energy(thrust_force, displacement)
+        #distance = distance.append(qr)
+        #speed = speed.append(q_dotR)
+        #displacement = np.subtract(distance[-1], distance[-2])
+        #speed_change = np.subtract(speed[-1], speed[-2])
+        Ke_thrust = self.calculate_thrust_energy(thrust_force, qr)
         
-        aerodynamic_force = self.compute_aerodynamic_forces(self.bodies)
-        ke_aero = self.aero_energy(aerodynamic_force, displacement, self.mass, speed[-2], speed[-1])
+        aerodynamic_force = self.compute_aerodynamic_forces(self.bodiesRen, q_dot)
+        ke_aero = self.aero_energy(aerodynamic_force, qr, self.mass, q_dotR, q_dotR)
         return np.add(np.add(Ke_motion,Ke_thrust),ke_aero)
 
     # ===========================================
     # === Conditional systems
     # ===========================================
 
-    def sample_conditional_params(system_def, rngkey):
+    def sample_conditional_params(self, system_def, rngkey, rho=1.):
         # Sample a random, valid setting of the conditional parameters for the system.
         # (If there are no conditional parameters, returning the empty array as below is fine)
         # TODO implement
@@ -329,10 +335,12 @@ class Aircraft:
         return energy
 
 
-    def compute_aerodynamic_forces(self, bodies):
-        fluid_density = scipy.constants.density_of_air  # Density of air
+    def compute_aerodynamic_forces(self, bodies, q_dot):
+        #fluid_density = scipy.constants.density_of_air  # Density of air
+        fluid_density = 1.293  # Density of air
         wind_velocity = jnp.array([0.0, 0.0, 0.0])  # Example wind velocity (modify as needed)
         
+        q_dotR = q_dot.reshape(-1,4,3)
         air_density = 0.5 * fluid_density * wind_velocity.dot(wind_velocity)
 
         for body in bodies:
@@ -342,32 +350,56 @@ class Aircraft:
             x0 = body['x0']
 
             # Compute the relative velocity between the body and the wind
-            body_velocity = v.dot(W)
+            body_velocity = q_dotR
             relative_velocity = body_velocity - wind_velocity
+            #relative_velocity = relative_vel.reshape(-1,3)
 
             # Compute the surface area of each triangle face
-            face_normals = utils.triangle_normals(v, f)
-            face_areas = utils.triangle_areas(v, f)
-            surface_areas = face_areas.dot(jnp.abs(face_normals))
+            v0 = v[f[:,0]]
+            v1 = v[f[:,1]]
+            v2 = v[f[:,2]]
+            face_normals = np.cross(v1 - v0, v2 - v0)
+            face_normals /= np.linalg.norm(face_normals, axis=1)[:, np.newaxis]
+
+
+            # Calculate the face rotations
+            up_vector = np.array([0, 0, 1])
+            face_rotations = []
+            face_rotation_angles = []
+            for normal in face_normals:
+                rotation = transform.Rotation.align_vectors(up_vector[np.newaxis, :], normal[np.newaxis, :])[0]
+                face_rotations.append(rotation)
+                rotation_angle = rotation.as_rotvec()
+                face_rotation_angles.append(rotation_angle)
+            face_rotations = np.stack(face_rotations)
+            face_rotation_angles = np.stack(face_rotation_angles)
+
+            # Calculate the face area
+            cross_product = np.cross(v1 - v0, v2 - v0)
+            face_area = 0.5 * np.linalg.norm(cross_product, axis=1)
+            #face_normals = utils.triangle_normals(v, f)
+            #face_areas = utils.triangle_areas(v, f)
+            #surface_areas = face_areas.dot(jnp.abs(face_normals))
 
             # Compute the angle of attack for each face
-            face_rotations = Rotation.align_vectors(jnp.array([0, 0, 1]), face_normals)
-            face_rotations_angles = face_rotations[1].magnitude()
+            #face_rotations = Rotation.align_vectors(jnp.array([0, 0, 1]), cross_product)
+            #face_rotations_angles = face_rotations[1].magnitude()
 
             # Compute the aerodynamic forces for each face
             face_forces = jnp.zeros_like(v)
             for i, face in enumerate(f):
                 face_normal = face_normals[i]
-                face_area = surface_areas[i]
-                face_rotation_angle = face_rotations_angles[i]
+                face_areas = face_area[i]
+                face_rotation_angle = face_rotation_angles[i]
 
                 # Compute the lift and drag coefficients based on the angle of attack
-                lift_coefficient = self.compute_lift_coefficient(face_rotation_angle)
-                drag_coefficient = self.compute_drag_coefficient(face_rotation_angle)
-
+                #lift_coefficient = self.compute_lift_coefficient(face_rotation_angle)
+                #drag_coefficient = self.compute_drag_coefficient(face_rotation_angle)
+                lift_coefficient = 1.0
+                drag_coefficient = 0.2
                 # Compute the lift and drag forces
-                lift_force = 0.5 * air_density * face_area * lift_coefficient * jnp.abs(relative_velocity).dot(face_normal) * face_normal
-                drag_force = 0.5 * air_density * face_area * drag_coefficient * relative_velocity.dot(face_normal) * face_normal
+                lift_force = 0.5 * air_density * face_areas * lift_coefficient * jnp.abs(relative_velocity).dot(face_normal) * face_normal
+                drag_force = 0.5 * air_density * face_areas * drag_coefficient * relative_velocity.dot(face_normal) * face_normal
 
                 # Accumulate the forces for each vertex
                 for vertex_index in face:
