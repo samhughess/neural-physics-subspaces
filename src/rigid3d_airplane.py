@@ -341,7 +341,8 @@ class Aircraft:
         wind_velocity = jnp.array([0.0, 0.0, 0.0])  # Example wind velocity (modify as needed)
         
         q_dotR = q_dot.reshape(-1,4,3)
-        air_density = 0.5 * fluid_density * wind_velocity.dot(wind_velocity)
+        air_density = 0.5 * fluid_density * jnp.dot(wind_velocity, wind_velocity)
+
 
         for body in bodies:
             v = body['v']
@@ -351,19 +352,18 @@ class Aircraft:
 
             # Compute the relative velocity between the body and the wind
             body_velocity = q_dotR
-            relative_velocity_old = body_velocity - wind_velocity
+            relative_velocity = body_velocity - wind_velocity
             #relative_velocity = relative_vel.reshape(-1,3)
-            relative_velocity = jnp.reshape(relative_velocity_old, (4,3))
-            rel_vel = relative_velocity[:,:]
-            print(rel_vel.shape)
+            #relative_velocity = jnp.reshape(relative_velocity_old, (4,3))
+
 
 
             # Compute the surface area of each triangle face
             v0 = v[f[:,0]]
             v1 = v[f[:,1]]
             v2 = v[f[:,2]]
-            face_normals = np.cross(v1 - v0, v2 - v0)
-            face_normals /= np.linalg.norm(face_normals, axis=1)[:, np.newaxis]
+            face_normals = jnp.cross(v1 - v0, v2 - v0)
+            face_normals /= jnp.linalg.norm(face_normals, axis=1)[:, jnp.newaxis]
 
 
             # Calculate the face rotations
@@ -371,16 +371,16 @@ class Aircraft:
             face_rotations = []
             face_rotation_angles = []
             for normal in face_normals:
-                rotation = transform.Rotation.align_vectors(up_vector[np.newaxis, :], normal[np.newaxis, :])[0]
+                rotation = transform.Rotation.align_vectors(up_vector[jnp.newaxis, :], normal[jnp.newaxis, :])[0]
                 face_rotations.append(rotation)
-                rotation_angle = rotation.as_rotvec()
+                rotation_angle = jnp.linalg.norm(face_rotations.as_rotvec(), axis=1)
                 face_rotation_angles.append(rotation_angle)
-            face_rotations = np.stack(face_rotations)
-            face_rotation_angles = np.stack(face_rotation_angles)
+            face_rotations = jnp.stack(face_rotations)
+            face_rotation_angles = jnp.stack(face_rotation_angles)
 
             # Calculate the face area
-            cross_product = np.cross(v1 - v0, v2 - v0)
-            face_area = 0.5 * np.linalg.norm(cross_product, axis=1)
+            cross_product = jnp.cross(v1 - v0, v2 - v0)
+            face_area = 0.5 * jnp.linalg.norm(cross_product, axis=1)
             #face_normals = utils.triangle_normals(v, f)
             #face_areas = utils.triangle_areas(v, f)
             #surface_areas = face_areas.dot(jnp.abs(face_normals))
