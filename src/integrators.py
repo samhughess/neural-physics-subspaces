@@ -15,6 +15,20 @@ import polyscope.imgui as psim
 #########################################################################
 
 
+def proximal_func_orig(system, system_def, timestep_h, q_tm1, q_t, q_tp1, subspace_fn=None):
+
+    if subspace_fn is not None:
+        q_tm1 = subspace_fn(system_def, q_tm1)
+        q_t = subspace_fn(system_def, q_t)
+        q_tp1 = subspace_fn(system_def, q_tp1)
+
+    q_inertial = 2 * q_t - q_tm1
+
+    l2_term = system.kinetic_energy(system_def, q_inertial, q_tp1 - q_inertial)
+    E_term = timestep_h**2 * system.potential_energy(system_def, q_tp1)
+
+    return l2_term + E_term
+
 def proximal_func(system, system_def, timestep_h, q_tm1, q_t, q_tp1, subspace_fn=None):
 
     if subspace_fn is not None:
