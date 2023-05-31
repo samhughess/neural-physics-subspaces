@@ -22,51 +22,6 @@ import utils
 import config
 
 ## Define functions
-def make_airplane(name, wingfoil, symmetry):
-    wing_airfoil = asb.Airfoil(wingfoil)
-    airplane = name,
-    xyz_ref = [0, 0, 0]# Cg location
-    wings=[
-        asb.Wing(
-            name = "Main Wing",
-            symmetric=symmetry, # Should the wing be mirrored across the XZ plane?
-            xsecs = [ # The wing's cross "x" section
-                asb.WingXSec( # At the root
-                    xyz_le = [0,0,0], # Coordinates of the LE
-                    chord = 0.16, # Chord length
-                    twist = 0, # degrees
-                    airfoil = wing_airfoil
-                ),
-                asb.WingXSec( # At the midpoint
-                    xyz_le = [0.01,0.5,0], # Coordinates of the LE
-                    chord = 0.08, # Chord length
-                    twist = 0, # degrees
-                    airfoil = wing_airfoil
-                ),
-                asb.WingXSec( # At the tip
-                    xyz_le = [0.08,1,0.1], # Coordinates of the LE
-                    chord = 0.04, # Chord length
-                    twist = 0, # degrees
-                    airfoil = wing_airfoil
-                ),
-            ]
-        ),
-    ],
-
-    fuselages = [
-        asb.Fuselage(
-            name="Fuselage",
-            xsecs =[
-                asb.FuselageXSec(
-                    xyz_c=[0, 0, 0],
-                    radius=0.6 * asb.Airfoil("dae51").local_thickness(x_over_c=xi)
-                )
-                for xi in asbnp.cosspace(0, 1, 30)
-            ]
-        )
-    ]
-
-    return airplane
 
 def vortexlatticemethod(airplane_object, vel, aoa):
     vlm = asb.VortexLatticeMethod(airplane=airplane_object, 
@@ -78,25 +33,18 @@ def vortexlatticemethod(airplane_object, vel, aoa):
     aero = vlm.run()
     return aero # Note: aero is a dictionary object with L, D, Y, l, m ,n, CL, CD, CU, Cl, CD, etc... F_g, F_w, M_g, M_w
 
-def aoa(q, wind):
-    
-    return alpha
-
-def beta(q, wind):
-
-    return beta
-
-def liftinglinemethod(airplane, op_point):
-    velocity = # m/s
-    alpha =  # deg
-    beta = # deg
-    p =  # rad/s
-    q =  # rad/s
-    r =  # rad/s
+def liftinglinemethod(airplane, q):
+    qR = q.reshape(-1,12,1)
+    vel_array = jnp.array({qR[1], qR[3], qR[5]})
+    velocity = jnp.linalg.norm(vel_array) # m/s
+    alpha = jnp.arctanh(jnp.true_divide(qR[5], qR[1])) # deg
+    beta = jnp.arctanh(jnp.true_divide(qR[3], qR[1])) # deg
+    p = qR[7] # rad/s
+    q = qR[9] # rad/s
+    r = qR[11] # rad/s
     op_point = asb.OperatingPoint(velocity, alpha, beta, p, q, r)
     analysis=  asb.LiftingLine(airplane,op_point)
     return analysis.run()
-
 
 def make_body(file, scale, cg, mass, inertia):
     v, f = igl.read_triangle_mesh(file)
@@ -183,79 +131,6 @@ class Aircraft:
 
     @staticmethod
     def construct(problem_name):
-
-        '''
-
-        Basic philosophy:
-            We define the system via two objects, a object instance ('system'), which can
-            hold pretty much anything (strings, function pointers, etc), and a dictionary 
-            ('system_def') which holds only jnp.array objects.
-
-            The reason for this split is the JAX JIT system. Data stored in the `system`
-            is fixed after construction, so it can be anything. Data stored in `system_def`
-            can potentially be modified after the system is constructed, so it must consist
-            only of JAX arrays to make JAX's JIT engine happy.
-
-
-        The fields which MUST be populated are:
-       
-            = System name
-            system.system_name --> str
-            The name of the system (e.g. "neohookean")
-            
-
-            = Problem name
-            system.problem_name --> str
-            The name of the problem (e.g. "trussbar2")
-       
-
-            = Dimension
-            system.dim --> int
-                The dimension of the configuration space for the system. When we
-                learn subspaces that map from `R^d --> R^n`, this is `n`. If the 
-                system internally expands the configuration space e.g. to append 
-                additional pinned vertex positions, those should NOT be counted 
-                here.
-
-
-            = Initial position
-            system_def['init_pos'] --> jnp.array float dimension: (n,)
-                An initial position, used to set the initial state in the GUI
-                It does not necessarily need to be the rest pose of the system.
-            
-
-            = Conditional parameters dimension
-            system.cond_dim --> int
-                The dimension of the conditional parameter space for the system. 
-                If there are no conditional parameters, use 0.
-            
-            = Conditional parameters value
-            system_def['cond_param'] --> jnp.array float dimension: (c,)
-                A vector of conditional paramters for the system, defining its current
-                state. If there are no conditional parameters, use a length-0 vector.
-            
-
-            = External forces
-            system_def['external_forces'] --> dictionary of anything
-                Data defining external forces which can be adjusted at runtime
-                The meaning of this dictionary is totally system-dependent. If unused, 
-                leave as an empty dictionary. Fill the dictionary with arrays or other 
-                data needed to evaluate external forces.
-
-
-            = Interesting states
-            system_def['interesting_states'] --> jnp.array float dimension (i,n)
-                A collection of `i` configuration state vectors which we want to explicitly track
-                and preserve.
-                If there are no interesting states (i=0), then this should just be a size (0,n) array.
-
-
-            The dictionary may also be populated with any other user-values which are useful in 
-            defining the system.
-
-            NOTE: When you add a new system class, also add it to the registry in config.py 
-        '''
-
         system_def = {}
         system = Aircraft()
 
@@ -266,6 +141,7 @@ class Aircraft:
         system_def['cond_params'] = jnp.zeros((0,)) # a length-0 array
         system_def['external_forces'] = {}
         system_def["contact_stiffness"] = 1000000.0
+        system_def['airplane'] = {}
         system.cond_dim = 0
         system.body_ID = None
 
@@ -281,14 +157,10 @@ class Aircraft:
             
             numBodiesFixed = 0
 
-            # Add all the necessary joints
-            #joint_list.append( make_joint(0, -1, bodies, jnp.array([ 0, 0.08 ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ))
-
             # Define the external forces
             system_def["gravity"] = jnp.array([0.0, 0.0, -9.8])
 
             system_def['external_forces']['aero_force'] = 0
-            system_def['external_forces']['drag_force'] = 0
 
             system_def['external_forces']['wind_strength_minmax'] = (-15, 15) # in m/s
             system_def['external_forces']['wind_strength_x'] = 0.0
@@ -299,21 +171,60 @@ class Aircraft:
             system_def['external_forces']['thrust_strength_left'] = 0.0
             system_def['external_forces']['thrust_strength_right'] = 0.0
 
-            system_def['external_forces']['thrust_angle_minmax'] = (-90, 90) # in m/s
-            system_def['external_forces']['thrust_angle_left'] = 0.0
-            system_def['external_forces']['thrust_angle_right'] = 0.0
-
-
             system.body_ID = np.array([1])
 
             # Define airplane parameters for aero calcs
-            name = "generic_testplane"
-            airfoil = "naca0012"
+            name_airplane = "generic_testplane"
+            airfoil_airplane = "naca0012"
             symmetry = True
-            make_airplane(name, airfoil, symmetry)
+
+            # Declare the airplane
+            wing_airfoil = asb.Airfoil(airfoil_airplane)
+            airplane = asb.Airplane(name = name_airplane,
+                                    xyz_ref = [0, 0, 0], # Cg location
+                                    wings=[
+                                        asb.Wing(
+                                            name = "Main Wing",
+                                            symmetric = True,
+                                            xsecs = [
+                                                asb.WingXSec(
+                                                    xyz_le = [0, 0, 0],
+                                                    chord = 0.16,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [0.01, 0.5, 0],
+                                                    chord = 0.08,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [0.8, 1, 0.1],
+                                                    chord = 0.04,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    fuselages = [
+                                        asb.Fuselage(
+                                            name="Fuselage",
+                                            xsecs = [
+                                                asb.FuselageXSec(
+                                                    xyz_c = [0, 0, 0]
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                )
+            
+            system.airplane = airplane
 
             
         elif problem_name == 'stoprotor_vtol':
+            # TODO: add airplane definition
             scale = 1
             
             # Add all the necessary bodies
@@ -336,6 +247,10 @@ class Aircraft:
             system_def['dim'] = config_dim
             system_def['init_pos'] = jnp.zeros(config_dim) # some other values
             system_def['interesting_states'] = jnp.zeros((0,config_dim))
+
+            system_def["gravity"] = jnp.array([0.0, 0.0, -9.8])
+
+            system_def['external_forces']['aero_force'] = 0
             
             system_def['external_forces']['wind_strength_minmax'] = (-15, 15) # in m/s
             system_def['external_forces']['wind_strength_x'] = 0.0
@@ -357,10 +272,10 @@ class Aircraft:
             name = "stoprotor_vtol"
             airfoil = "naca0012"
             symmetry = True
-            make_airplane(name, airfoil, symmetry)
 
             
         elif problem_name == 'stoprotor_forwardflight':
+            # TODO: add airplane definition
             scale = 1
             
             # Add all the necessary bodies
@@ -383,6 +298,10 @@ class Aircraft:
             system_def['dim'] = config_dim
             system_def['init_pos'] = jnp.zeros(config_dim) # some other values
             system_def['interesting_states'] = jnp.zeros((0,config_dim))
+
+            system_def["gravity"] = jnp.array([0.0, 0.0, -9.8])
+
+            system_def['external_forces']['aero_force'] = 0
             
             system_def['external_forces']['wind_strength_minmax'] = (-15, 15) # in m/s
             system_def['external_forces']['wind_strength_x'] = 0.0
@@ -401,8 +320,6 @@ class Aircraft:
             name = "stoprotor_forwardflight"
             airfoil = "naca0012"
             symmetry = False
-            make_airplane(name, airfoil, symmetry)
-
 
         else:
             raise ValueError("could not parse problem name: " + str(problem_name))
@@ -427,7 +344,6 @@ class Aircraft:
         system_def['init_pos'] = pos
         system_def['mass'] = mass
         system_def['inertia'] = inertia
-        system_def['dim'] = pos.size
 
         system_def['interesting_states'] = system_def['init_pos'][None,:]
 
@@ -453,49 +369,60 @@ class Aircraft:
    
     
     def ke_error(self, system_def, q_dot):
-        
-        q_dotR = q_dot.reshape(-1,7,1)
+        q_dotR = q_dot.reshape(-1,12,1)
         massR = system_def['mass'].reshape(-1,4,4)
-        
         A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_dotR
         Ke_offset = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
 
         return Ke_offset
     
-    def action(self, system, system_def, q, q_dot):
+    def action(self, system, system_def, q):
         # TODO add all forces
         PE = system.potential_energy(system_def, q)
-        ke_transl = system.ke_translation(system_def, q_dot)
-        ke_rot = system.ke_rotational(system_def, q_dot)
+        ke_transl = system.ke_translation(system_def, q)
+        ke_rot = system.ke_rotational(system_def, q)
         KE = ke_transl + ke_rot
         lagrangian = KE + PE
-        dis_aero = system.dissipation_fnc()
-        dis_thrust = system.dissipation_fnc()
-        dissipation = dis_aero + dis_thrust
+        n_aero = 2
+        n_thrust = 0
+        aero_data = system.liftinglinemethod(system.airplane, q)
+        aero_transforce = aero_data['F_b']
+        aero_rotmoment = aero_data['M_b']
+        
+        thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
+        thrust_force_right =  system_def['external_forces']['thrust_strength_right']*jnp.array([-1, 0, 0])
+
+        dis_aero_translation = system.dissipation_fnc(n_aero, aero_transforce, q, "translation")
+        dis_aero_rotation = system.dissipation_fnc(n_aero, aero_rotmoment, q, "rotation")
+        dis_thrust_left = system.dissipation_fnc(n_thrust, thrust_force_left, q, "translation")
+        dis_thrust_right = system.dissipation_fnc(n_thrust, thrust_force_right, q, "translation")
+        dissipation = dis_aero_translation + dis_aero_rotation + dis_thrust_left + dis_thrust_right
         return lagrangian + dissipation
 
-    def ke_translation(self, system_def, q, q_dot):
-        mass = system_def['mass']
-        ke_translational = 
+    def ke_translation(self, system_def, q):
+        qR = q.reshape(-1,12,1)
+        velocity = jnp.array({qR[1], qR[3], qR[5]})
+        massR = system_def['mass'].reshape(-1,3,3)
+        ke_translational = 0.5*jnp.transpose(velocity)*massR*velocity
         return ke_translational
     
-    def ke_rotational(self, system_def, q_dot):
-        q_dotR = q_dot.reshape(-1,7,1)
-        inertia = system_def['inertia'].reshape(-1, 3, 3)
-        ke_rot = 
+    def ke_rotational(self, system_def, q):
+        qR = q.reshape(-1,12,1)
+        omega = jnp.array({qR[7], qR[9], qR[11]})
+        inertiaR = system_def['inertia'].reshape(-1, 3, 3)
+        ke_rot = 0.5*jnp.transpose(omega)*inertiaR*omega
         return ke_rot
     
-    def dissipation_fnc(self, n , c, q_dot):
-        q_dotR = q_dot.reshape(-1,7,1)
-        D = 1/(n+1)*c*q_dotR
+    def dissipation_fnc(self, n, c, q, style):
+        qR = q.reshape(-1,12,1)
+        if style == "translation":
+            q_dot = jnp.array({qR[1], qR[3], qR[5]})
+        elif style == "rotation":
+            q_dot = jnp.array({qR[7], qR[9], qR[11]})
+        else:
+            print("Specified style not found. Use either ''translation'' or ''rotation'' as style name")
+        D = 1/(n+1)*c*q_dot
         return D
-
-    def aero_forces(self, airplane, q, q_dot):
-        q_R = q.reshape(-1,4,3)
-        q_dotR = q_dot.reshape(-1,4,3)
-        aoa = q_R(:, 3, :)
-        aero_forces = vortexlatticemethod(airplane, q_dotR, aoa)
-        return aero_forces
 
 
     # ===========================================
