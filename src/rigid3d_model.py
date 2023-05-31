@@ -25,6 +25,9 @@ def make_body(file, density, scale):
     vol = igl.massmatrix(v,f).data
     vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
 
+    c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
+    v = v - c
+
     W = np.c_[v, np.ones(v.shape[0])]
     mass = np.matmul(W.T, vol[:,None]*W) * density
 
@@ -116,6 +119,26 @@ class Rigid3DSystem:
             system_def["gravity"] = jnp.array([0.0, -0.98, 0.0])
             system_def['external_forces']['force_strength_minmax'] = (-10, 10)
             system_def['external_forces']['force_strength_x'] = 0.0
+            system_def['external_forces']['force_strength_y'] = 0.0
+            system_def['external_forces']['force_strength_z'] = 0.0
+
+        if problem_name == 'plane':
+
+            scale = 1
+
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+
+            #joint_list.append( make_joint( 0, -1, bodies, jnp.array([ 0,           0.08      ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) )
+            #joint_list.append( make_joint( 0,  1, bodies, jnp.array([-0.046622,    0.097594  ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) ) 
+            #joint_list.append( make_joint( 1,  2, bodies, jnp.array([-0.1736,      0.11205   ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) )
+            #joint_list.append( make_joint( 1,  3, bodies, jnp.array([-0.31194,     0.16654   ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) )
+            #joint_list.append( make_joint( 4, -1, bodies, jnp.array([-0.13,        0.1875    ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) )
+            #joint_list.append( make_joint( 2, -1, bodies, jnp.array([-0.13,        0.045     ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) )
+            #joint_list.append( make_joint( 4,  3, bodies, jnp.array([-0.21981,     0.25102   ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ) )
+
+            system_def["gravity"] = jnp.array([0.0, 0.0, -9.8])
+            system_def['external_forces']['force_strength_minmax'] = (-10, 10)
+            system_def['external_forces']['force_strength_x'] = 10.0
             system_def['external_forces']['force_strength_y'] = 0.0
             system_def['external_forces']['force_strength_z'] = 0.0
 

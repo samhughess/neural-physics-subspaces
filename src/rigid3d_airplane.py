@@ -5,10 +5,12 @@ import numpy as np
 import os
 import polyscope as ps
 import polyscope.imgui as psim
-
-import scipy.constants
+import aerosandbox as asb
+import aerosandbox.numpy as asbnp
 
 import scipy.spatial.transform as transform
+
+import jax_transformations3d as jaxtran
 
 
 try:
@@ -20,54 +22,125 @@ import utils
 import config
 
 ## Define functions
-def make_body(file, density, scale):
+def make_airplane(name, wingfoil, symmetry):
+    wing_airfoil = asb.Airfoil(wingfoil)
+    airplane = name,
+    xyz_ref = [0, 0, 0]# Cg location
+    wings=[
+        asb.Wing(
+            name = "Main Wing",
+            symmetric=symmetry, # Should the wing be mirrored across the XZ plane?
+            xsecs = [ # The wing's cross "x" section
+                asb.WingXSec( # At the root
+                    xyz_le = [0,0,0], # Coordinates of the LE
+                    chord = 0.16, # Chord length
+                    twist = 0, # degrees
+                    airfoil = wing_airfoil
+                ),
+                asb.WingXSec( # At the midpoint
+                    xyz_le = [0.01,0.5,0], # Coordinates of the LE
+                    chord = 0.08, # Chord length
+                    twist = 0, # degrees
+                    airfoil = wing_airfoil
+                ),
+                asb.WingXSec( # At the tip
+                    xyz_le = [0.08,1,0.1], # Coordinates of the LE
+                    chord = 0.04, # Chord length
+                    twist = 0, # degrees
+                    airfoil = wing_airfoil
+                ),
+            ]
+        ),
+    ],
 
+    fuselages = [
+        asb.Fuselage(
+            name="Fuselage",
+            xsecs =[
+                asb.FuselageXSec(
+                    xyz_c=[0, 0, 0],
+                    radius=0.6 * asb.Airfoil("dae51").local_thickness(x_over_c=xi)
+                )
+                for xi in asbnp.cosspace(0, 1, 30)
+            ]
+        )
+    ]
+
+    return airplane
+
+def vortexlatticemethod(airplane_object, vel, aoa):
+    vlm = asb.VortexLatticeMethod(airplane=airplane_object, 
+                                  op_point=asb.OperatingPoint(
+                                        velocity = vel, # in m/s
+                                        alpha = aoa, # in degrees
+                                  )
+    )
+    aero = vlm.run()
+    return aero # Note: aero is a dictionary object with L, D, Y, l, m ,n, CL, CD, CU, Cl, CD, etc... F_g, F_w, M_g, M_w
+
+def aoa(q, wind):
+    
+    return alpha
+
+def beta(q, wind):
+
+    return beta
+
+def liftinglinemethod(airplane, op_point):
+    velocity = # m/s
+    alpha =  # deg
+    beta = # deg
+    p =  # rad/s
+    q =  # rad/s
+    r =  # rad/s
+    op_point = asb.OperatingPoint(velocity, alpha, beta, p, q, r)
+    analysis=  asb.LiftingLine(airplane,op_point)
+    return analysis.run()
+
+
+def make_body(file, scale, cg, mass, inertia):
     v, f = igl.read_triangle_mesh(file)
     v = scale*v
 
-    # Initialize a variable to calculate the total center of mass
-    total_mass = 0
+    vol = igl.massmatrix(v,f).data
+    vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
 
-    # Initialize the center of mass coordinates
-    center_of_mass = ([0.0, 0.0, 0.0])
+    # c is the initial center of mass
+    c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
+    v = v - c
 
-    # Iterate over each face of the mesh
-    for face in f:
-        # Get the vertices of the face
-        v0, v1, v2 = v[face]
-
-        # Calculate the area of the face
-        area = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0))
-
-        # Calculate the centroid of the face
-        centroid = (v0 + v1 + v2) / 3.0
-
-        # Update the total mass and center of mass
-        total_mass += area
-        center_of_mass += area * centroid
-
-    # Calculate the final center of mass coordinates
-    center_of_mass /= total_mass
-
-    #vol = igl.massmatrix(v,f).data
-    #vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
-
-    #c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
-    v = v - center_of_mass
-
-    #c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
-    #c = np.sum(vol[:, None]*v[:vol.shape[0]], axis=0) / np.sum(vol)
-    #v = v - c
+    # omega is initial quaternion: representing initial orientation
+    omega = [0, 0, 0, 1]
 
     W = np.c_[v, np.ones(v.shape[0])]
     #mass = np.matmul(W.T, vol[:,None]*W) * density
+    #inertia = np.array[1,0,0]
 
-    x0 = jnp.array( [[1, 0, 0],[0, 1, 0],[0, 0, 1], center_of_mass] )
+    # x0 is the initial position and orientation where c: 1 x 3 and omega: 1 x 4 
+    x0 = jnp.array([cg, omega])
 
-    body = {'v': v, 'f': f, 'W':W, 'x0': x0, 'mass': total_mass }
+    body = {'v': v, 'f': f, 'W':W, 'x0': x0, 'mass': mass, 'inertia': inertia }
     return body
 
-def make_joint( b0, b1, bodies, joint_pos_world, joint_vec_world ):
+def make_body_noinput(file, density, scale):
+    v, f = igl.read_triangle_mesh(file)
+    v = scale*v
+
+    vol = igl.massmatrix(v,f).data
+    vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
+
+    # c is the initial center of mass
+    c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
+    v = v - c
+    W = np.c_[v, np.ones(v.shape[0])]
+    mass = np.matmul(W.T, vol[:,None]*W) * density
+
+    x0 = jnp.array( [[1, 0, 0],[0, 1, 0],[0, 0, 1], c] )
+
+    body = {'v': v, 'f': f, 'W':W, 'x0': x0, 'mass': mass }
+    return body
+
+def make_joint(b0, b1, bodies, joint_pos_world, joint_vec_world ):
     # Creates a joint between the specified bodies, assumes the bodies have zero rotation and are properly aligned in the world
     # TODO: Use rotation for joint initialization
     pb0 = joint_pos_world
@@ -206,7 +279,7 @@ class Aircraft:
             scale = 1
             
             # Add all the necessary bodies
-            bodies.append( make_body( os.path.join(".", "data", "Glider.obj"), 1000, scale))
+            bodies.append( make_body_noinput( os.path.join(".", "data", "Body1.obj"), 1000, scale))
             
             numBodiesFixed = 1
 
@@ -215,24 +288,123 @@ class Aircraft:
 
             # Define the external forces
             system_def["gravity"] = jnp.array([0.0, 0.0, -9.8])
+
             system_def['external_forces']['aero_force'] = 0
-            system_def['external_forces']['thrust_force'] = 0
-            system_def['external_forces']['thrustforce_strength_minmax'] = (0,300)
+            system_def['external_forces']['drag_force'] = 0
+
+            system_def['external_forces']['wind_strength_minmax'] = (-15, 15) # in m/s
+            system_def['external_forces']['wind_strength_x'] = 0.0
+            system_def['external_forces']['wind_strength_y'] = 0.0
+            system_def['external_forces']['wind_strength_z'] = 0.0
+
+            system_def['external_forces']['thrust_strength_minmax'] = (-15, 15) # in m/s
+            system_def['external_forces']['thrust_strength_left'] = 0.0
+            system_def['external_forces']['thrust_strength_right'] = 0.0
+
+            system_def['external_forces']['thrust_angle_minmax'] = (-90, 90) # in m/s
+            system_def['external_forces']['thrust_angle_left'] = 0.0
+            system_def['external_forces']['thrust_angle_right'] = 0.0
+
 
             system.body_ID = np.array([1])
 
-            #config_dim = 280
-            #system_def['dim'] = config_dim
-            #system_def['init_pos'] = jnp.zeros(config_dim) # some values
-            #system_def['interesting_states'] = jnp.zeros((0,config_dim))
-        
-        elif problem_name == 'stoprotor':
+            # Define airplane parameters for aero calcs
+            name = "generic_testplane"
+            airfoil = "naca0012"
+            symmetry = True
+            make_airplane(name, airfoil, symmetry)
 
-            # and so on....
+            
+        elif problem_name == 'stoprotor_vtol':
+            scale = 1
+            
+            # Add all the necessary bodies
+            # Main Body
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Left Counterbalance
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Right Counterbalance
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Top Rotor
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Right Wing
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Left Wing
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            
+            system.body_ID = np.array([0, 1, 2, 3, 4, 5])
+
             config_dim = 334
             system_def['dim'] = config_dim
             system_def['init_pos'] = jnp.zeros(config_dim) # some other values
             system_def['interesting_states'] = jnp.zeros((0,config_dim))
+            
+            system_def['external_forces']['wind_strength_minmax'] = (-15, 15) # in m/s
+            system_def['external_forces']['wind_strength_x'] = 0.0
+            system_def['external_forces']['wind_strength_y'] = 0.0
+            system_def['external_forces']['wind_strength_z'] = 0.0
+
+            system_def['external_forces']['thrust_strength_minmax'] = (-15, 15) # in m/s
+            system_def['external_forces']['thrust_strength_left'] = 0.0
+            system_def['external_forces']['thrust_strength_right'] = 0.0
+
+            system_def['external_forces']['thrust_angle_minmax'] = (-90, 90) # in m/s
+            system_def['external_forces']['thrust_angle_left'] = 0.0
+            system_def['external_forces']['thrust_angle_right'] = 0.0
+
+            system_def['external_forces']['toprotor_velocity_minmax'] = (-90, 90) # in m/s
+            system_def['external_forces']['toprotor_velocity'] = 0.0
+
+            # Define airplane parameters for aero calcs
+            name = "stoprotor_vtol"
+            airfoil = "naca0012"
+            symmetry = True
+            make_airplane(name, airfoil, symmetry)
+
+            
+        elif problem_name == 'stoprotor_forwardflight':
+            scale = 1
+            
+            # Add all the necessary bodies
+            # Main Body
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Left Counterbalance
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Right Counterbalance
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Top Rotor
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Right Wing
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+            # Left Wing
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), 1000, scale))
+             
+            system.body_ID = np.array([0, 1, 2, 3, 4, 5])
+           
+            config_dim = 334
+            system_def['dim'] = config_dim
+            system_def['init_pos'] = jnp.zeros(config_dim) # some other values
+            system_def['interesting_states'] = jnp.zeros((0,config_dim))
+            
+            system_def['external_forces']['wind_strength_minmax'] = (-15, 15) # in m/s
+            system_def['external_forces']['wind_strength_x'] = 0.0
+            system_def['external_forces']['wind_strength_y'] = 0.0
+            system_def['external_forces']['wind_strength_z'] = 0.0
+
+            system_def['external_forces']['thrust_strength_minmax'] = (-15, 15) # in m/s
+            system_def['external_forces']['thrust_strength_left'] = 0.0
+            system_def['external_forces']['thrust_strength_right'] = 0.0
+
+            system_def['external_forces']['thrust_angle_minmax'] = (-90, 90) # in m/s
+            system_def['external_forces']['thrust_angle_left'] = 0.0
+            system_def['external_forces']['thrust_angle_right'] = 0.0
+
+            # Define airplane parameters for aero calcs
+            name = "stoprotor_forwardflight"
+            airfoil = "naca0012"
+            symmetry = False
+            make_airplane(name, airfoil, symmetry)
+
 
         else:
             raise ValueError("could not parse problem name: " + str(problem_name))
@@ -241,6 +413,7 @@ class Aircraft:
         pos  = jnp.array( np.array([ body['x0']   for body in bodies[numBodiesFixed:] ]).flatten() )
 
         mass = jnp.array( np.array([ body['mass'] for body in bodies[numBodiesFixed:] ]).flatten() )
+        inertia = jnp.array( np.array([ body['inertia'] for body in bodies[numBodiesFixed:] ]).flatten())
         
         #
         system.dim = pos.size
@@ -255,6 +428,7 @@ class Aircraft:
         system_def['rest_pos'] = pos
         system_def['init_pos'] = pos
         system_def['mass'] = mass
+        system_def['inertia'] = inertia
         system_def['dim'] = pos.size
 
         system_def['interesting_states'] = system_def['init_pos'][None,:]
@@ -269,48 +443,60 @@ class Aircraft:
 
     def potential_energy(self, system_def, q):
         # TODO implement
-        qR = q.reshape(-1,4,3)
+        qR = q.reshape(-1,6,1)
         massR = system_def['mass'].reshape(-1,4,4)
         gravity = system_def["gravity"]
-        c_weighted = massR[:,3,3][:,None]*qR[:,3,:]
+        c_weighted = massR[:,3,3][:,None]*qR[:,0:2,:]
         gravity_energy = -jnp.sum(c_weighted * gravity[None,:])
+        
         return gravity_energy
    
-    def calculate_thrust_energy(self, thrust_force, distance):
-        # Assuming constant thrust force and distance in the direction of the force
-
-        # Calculate work done
-        work_done = thrust_force * distance
-
-        # Energy is equal to the work done
-        energy = work_done
-
-        return energy
     
-    def kinetic_energy(self, system_def, q, q_dot):
-        distance = {}
-        speed = {}
-
-        qr = q.reshape(-1,4,3)
-        #print(qr.shape)
+    def kinetic_energy(self, system_def, q_dot):
         
-        q_dotR = q_dot.reshape(-1,4,3)
-        #print(q_dotR.shape)
+        q_dotR = q_dot.reshape(-1,7,1)
         massR = system_def['mass'].reshape(-1,4,4)
         
         A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_dotR
-        Ke_motion = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
+        Ke_offset = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
 
-        thrust_force =  system_def['external_forces']['thrust_force']
-        #distance = distance.append(qr)
-        #speed = speed.append(q_dotR)
-        #displacement = np.subtract(distance[-1], distance[-2])
-        #speed_change = np.subtract(speed[-1], speed[-2])
-        Ke_thrust = self.calculate_thrust_energy(thrust_force, qr)
-        
-        aerodynamic_force = self.compute_aerodynamic_forces(self.bodiesRen, q_dot)
-        ke_aero = self.aero_energy(aerodynamic_force, qr, self.mass, q_dotR, q_dotR)
-        return np.add(np.add(Ke_motion,Ke_thrust),ke_aero)
+        return Ke_offset
+    
+    def action(self, system, system_def, q, q_dot):
+        # TODO add all forces
+        PE = system.potential_energy(system_def, q)
+        ke_transl = system.ke_translation(system_def, q_dot)
+        ke_rot = system.ke_rotational(system_def, q_dot)
+        KE = ke_transl + ke_rot
+        lagrangian = KE + PE
+        dis_aero = system.dissipation_fnc()
+        dis_thrust = system.dissipation_fnc()
+        dissipation = dis_aero + dis_thrust
+        return lagrangian + dissipation
+
+    def ke_translation(self, system_def, q, q_dot):
+        mass = system_def['mass']
+        ke_translational = 
+        return ke_translational
+    
+    def ke_rotational(self, system_def, q_dot):
+        q_dotR = q_dot.reshape(-1,7,1)
+        inertia = system_def['inertia'].reshape(-1, 3, 3)
+        ke_rot = 
+        return ke_rot
+    
+    def dissipation_fnc(self, n , c, q_dot):
+        q_dotR = q_dot.reshape(-1,7,1)
+        D = 1/(n+1)*c*q_dotR
+        return D
+
+    def aero_forces(self, airplane, q, q_dot):
+        q_R = q.reshape(-1,4,3)
+        q_dotR = q_dot.reshape(-1,4,3)
+        aoa = q_R(:, 3, :)
+        aero_forces = vortexlatticemethod(airplane, q_dotR, aoa)
+        return aero_forces
+
 
     # ===========================================
     # === Conditional systems
@@ -321,127 +507,35 @@ class Aircraft:
         # (If there are no conditional parameters, returning the empty array as below is fine)
         # TODO implement
         return jnp.zeros((0,))
+    
+    def build_system_ui(self, system_def):
+        if psim.TreeNode("system UI"):
+            psim.TextUnformatted("External forces:")
 
-    def aero_energy(self, aerodynamic_force, displacement, mass, initial_velocity, final_velocity):
-        # Calculate the work done
-        work = np.dot(aerodynamic_force, displacement)
+            if "wind_strength_x" in system_def["external_forces"]:
+                low, high = system_def['external_forces']['wind_strength_minmax']
+                _, new_val = psim.SliderFloat("wind_strength_x", float(system_def['external_forces'][ 'wind_strength_x']), low, high)
+                system_def['external_forces']['wind_strength_x'] = jnp.array(new_val)
 
-        # Calculate the change in kinetic energy
-        delta_kinetic_energy = 0.5 * mass * (final_velocity**2 - initial_velocity**2)
+            if "wind_strength_y" in system_def["external_forces"]:
+                low, high = system_def['external_forces']['wind_strength_minmax']
+                _, new_val = psim.SliderFloat("wind_strength_y", float(system_def['external_forces'][ 'wind_strength_y']), low, high)
+                system_def['external_forces']['wind_strength_y'] = jnp.array(new_val)
 
-        # Total energy is the sum of work and change in kinetic energy
-        energy = work + delta_kinetic_energy
-
-        return energy
-
-
-    def compute_aerodynamic_forces(self, bodies, q_dot):
-        #fluid_density = scipy.constants.density_of_air  # Density of air
-        fluid_density = 1.293  # Density of air
-        wind_velocity = jnp.array([0.0, 0.0, 0.0])  # Example wind velocity (modify as needed)
-        
-        q_dotR = q_dot.reshape(-1,4,3)
-        air_density = 0.5 * fluid_density * jnp.dot(wind_velocity, wind_velocity)
+            if "wind_strength_z" in system_def["external_forces"]:
+                low, high = system_def['external_forces']['wind_strength_minmax']
+                _, new_val = psim.SliderFloat("wind_strength_z", float(system_def['external_forces'][ 'wind_strength_z']), low, high)
+                system_def['external_forces']['wind_strength_z'] = jnp.array(new_val)
 
 
-        for body in bodies:
-            v = body['v']
-            f = body['f']
-            W = body['W']
-            x0 = body['x0']
-
-            # Compute the relative velocity between the body and the wind
-            body_velocity = q_dotR
-            relative_velocity = body_velocity - wind_velocity
-            #relative_velocity = relative_vel.reshape(-1,3)
-            #relative_velocity = jnp.reshape(relative_velocity_old, (4,3))
-
-
-
-            # Compute the surface area of each triangle face
-            v0 = v[f[:,0]]
-            v1 = v[f[:,1]]
-            v2 = v[f[:,2]]
-            face_normals = jnp.cross(v1 - v0, v2 - v0)
-            face_normals /= jnp.linalg.norm(face_normals, axis=1)[:, jnp.newaxis]
-
-
-            # Calculate the face rotations
-            up_vector = np.array([0, 0, 1])
-            face_rotations = []
-            face_rotation_angles = []
-            for normal in face_normals:
-                rotation = transform.Rotation.align_vectors(up_vector[jnp.newaxis, :], normal[jnp.newaxis, :])[0]
-                face_rotations.append(rotation)
-                rotation_angle = jnp.linalg.norm(face_rotations.as_rotvec(), axis=1)
-                face_rotation_angles.append(rotation_angle)
-            face_rotations = jnp.stack(face_rotations)
-            face_rotation_angles = jnp.stack(face_rotation_angles)
-
-            # Calculate the face area
-            cross_product = jnp.cross(v1 - v0, v2 - v0)
-            face_area = 0.5 * jnp.linalg.norm(cross_product, axis=1)
-            #face_normals = utils.triangle_normals(v, f)
-            #face_areas = utils.triangle_areas(v, f)
-            #surface_areas = face_areas.dot(jnp.abs(face_normals))
-
-            # Compute the angle of attack for each face
-            #face_rotations = Rotation.align_vectors(jnp.array([0, 0, 1]), cross_product)
-            #face_rotations_angles = face_rotations[1].magnitude()
-
-            # Compute the aerodynamic forces for each face
-            face_forces = jnp.zeros_like(v)
-            for i, face in enumerate(f):
-                face_normal = face_normals[i]
-                face_areas = face_area[i]
-                face_rotation_angle = face_rotation_angles[i]
-
-                # Compute the lift and drag coefficients based on the angle of attack
-                #lift_coefficient = self.compute_lift_coefficient(face_rotation_angle)
-                #drag_coefficient = self.compute_drag_coefficient(face_rotation_angle)
-                lift_coefficient = 1.0
-                drag_coefficient = 0.2
-                # Compute the lift and drag forces
-                lift_force = 0.5 * air_density * face_areas * lift_coefficient * jnp.dot(jnp.dot(jnp.abs(relative_velocity),face_normal),face_normal)
-                drag_force = 0.5 * air_density * face_areas * drag_coefficient * jnp.dot(jnp.dot(relative_velocity,face_normal),face_normal)
-
-                # Accumulate the forces for each vertex
-                for vertex_index in face:
-                    face_forces[vertex_index] += lift_force + drag_force
-
-            # Convert the face forces to vertex forces
-            vertex_forces = face_forces / W
-
-            # Apply the aerodynamic forces to the body
-            body['external_forces'] += vertex_forces
-
-
+            psim.TreePop()
+    
+    def align_vectors_wrapper(self, up_vector, face_normal):
+        return transform.Rotation.align_vectors(up_vector, face_normal)
 
     # ===========================================
     # === Visualization routines
     # ===========================================
-
-    def build_system_ui(system_def):
-        if psim.TreeNode("system UI"):
-            psim.TextUnformatted("External forces:")
-
-            if "thrust_force" in system_def["external_forces"]:
-                low, high = system_def['external_forces']['thrustforce_strength_minmax']
-                _, new_val = psim.SliderFloat("thrust_force", float(system_def['external_forces'][ 'thrust_force']), low, high)
-                system_def['external_forces']['thrust_force'] = jnp.array(new_val)
-
-            if "force_strength_y" in system_def["external_forces"]:
-                low, high = system_def['external_forces']['force_strength_minmax']
-                _, new_val = psim.SliderFloat("force_strength_y", float(system_def['external_forces'][ 'force_strength_y']), low, high)
-                system_def['external_forces']['force_strength_y'] = jnp.array(new_val)
-
-            if "force_strength_z" in system_def["external_forces"]:
-                low, high = system_def['external_forces']['force_strength_minmax']
-                _, new_val = psim.SliderFloat("force_strength_z", float(system_def['external_forces'][ 'force_strength_z']), low, high)
-                system_def['external_forces']['force_strength_z'] = jnp.array(new_val)
-
-
-            psim.TreePop()
 
     def visualize(self, system_def, x, name="rigid3d", prefix='', transparency=1.):
 
