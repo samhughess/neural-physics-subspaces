@@ -150,7 +150,7 @@ def main():
         stats = {}
 
         def q_dists_one(q):
-            return jax.vmap(partial(system.kinetic_energy, system_def,
+            return jax.vmap(partial(system.ke_error, system_def,
                                     q))(q_batch - q[None, :]) + DIST_EPS
 
         all_q_dists = jax.vmap(q_dists_one)(q_batch)  # [B,B]

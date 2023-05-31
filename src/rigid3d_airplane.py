@@ -109,17 +109,15 @@ def make_body(file, scale, cg, mass, inertia):
     c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
     v = v - c
 
-    # omega is initial quaternion: representing initial orientation
-    omega = [0, 0, 0, 1]
-
     W = np.c_[v, np.ones(v.shape[0])]
-    #mass = np.matmul(W.T, vol[:,None]*W) * density
-    #inertia = np.array[1,0,0]
 
-    # x0 is the initial position and orientation where c: 1 x 3 and omega: 1 x 4 
-    x0 = jnp.array([cg, omega])
+    # TODO: Translate to use quaternion rather than euler angles to avoid gimbal lock
 
-    body = {'v': v, 'f': f, 'W':W, 'x0': x0, 'mass': mass, 'inertia': inertia }
+    # x0 is the initial state space with x, x_dot, y, y_dot, z, z_dot, yaw, yaw_dot (p), pitch, pitch_dot (q), roll, roll_dot (r) 
+    # x0 = jnp.array([cg, omega])
+    x0 = jnp.array([c[0], 0, c[1], 0, c[2], 0, 0, 0, 0, 0, 0, 0])
+
+    body = {'v': v, 'f': f, 'W': W, 'x0': x0, 'mass': mass, 'inertia': inertia }
     return body
 
 def make_body_noinput(file, density, scale):
@@ -273,7 +271,7 @@ class Aircraft:
 
         bodies = []
         joint_list = []
-        numBodiesFixed = 1
+        numBodiesFixed = 0
 
         if problem_name == 'generic airplane':
             scale = 1
@@ -281,7 +279,7 @@ class Aircraft:
             # Add all the necessary bodies
             bodies.append( make_body_noinput( os.path.join(".", "data", "Body1.obj"), 1000, scale))
             
-            numBodiesFixed = 1
+            numBodiesFixed = 0
 
             # Add all the necessary joints
             #joint_list.append( make_joint(0, -1, bodies, jnp.array([ 0, 0.08 ,0.044 ]), jnp.array([ 0, 0.0, 1.0 ]) ))
@@ -443,16 +441,18 @@ class Aircraft:
 
     def potential_energy(self, system_def, q):
         # TODO implement
-        qR = q.reshape(-1,6,1)
-        massR = system_def['mass'].reshape(-1,4,4)
+        qR = q.reshape(-1,12,1)
+        q_pos = qR[::2]
+        q_xyz = q_pos[0:2]
+        massR = system_def['mass'].reshape(-1,3,3)
         gravity = system_def["gravity"]
-        c_weighted = massR[:,3,3][:,None]*qR[:,0:2,:]
+        c_weighted = massR*q_xyz
         gravity_energy = -jnp.sum(c_weighted * gravity[None,:])
         
         return gravity_energy
    
     
-    def kinetic_energy(self, system_def, q_dot):
+    def ke_error(self, system_def, q_dot):
         
         q_dotR = q_dot.reshape(-1,7,1)
         massR = system_def['mass'].reshape(-1,4,4)
