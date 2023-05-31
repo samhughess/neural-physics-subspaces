@@ -137,7 +137,7 @@ def main():
 
         # Map the latent state to config space
         q = subspace_f(z)
-        E_pot = system.potential_energy(system_def, q)
+        E_pot = system.action(system_def, q)
 
         return z, cond_params, q, E_pot
 
