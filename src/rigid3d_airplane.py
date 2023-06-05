@@ -35,7 +35,7 @@ def vortexlatticemethod(airplane_object, vel, aoa):
 
 def liftinglinemethod(airplane, q):
     qR = q.reshape(-1,12,1)
-    vel_array = jnp.array({qR[1], qR[3], qR[5]})
+    vel_array = jnp.array({qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]})
     velocity = jnp.linalg.norm(vel_array) # m/s
     alpha = jnp.arctanh(jnp.true_divide(qR[5], qR[1])) # deg
     beta = jnp.arctanh(jnp.true_divide(qR[3], qR[1])) # deg
