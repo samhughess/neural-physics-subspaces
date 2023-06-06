@@ -33,17 +33,18 @@ def vortexlatticemethod(airplane_object, vel, aoa):
     aero = vlm.run()
     return aero # Note: aero is a dictionary object with L, D, Y, l, m ,n, CL, CD, CU, Cl, CD, etc... F_g, F_w, M_g, M_w
 
-def liftinglinemethod(airplane, q):
+def liftinglinemethod(airplane, q, wind):
     qR = q.reshape(-1,12,1)
     vel_array = jnp.array({qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]})
-    velocity = jnp.linalg.norm(vel_array) # m/s
-    alpha = jnp.arctanh(jnp.true_divide(qR[5], qR[1])) # deg
-    beta = jnp.arctanh(jnp.true_divide(qR[3], qR[1])) # deg
+    vel_relative = jnp.add(vel_array, wind)
+    velocity = jnp.linalg.norm(vel_relative) # m/s
+    alpha = jnp.arctanh(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
+    beta = jnp.arctanh(jnp.true_divide(vel_relative[3], vel_relative[1])) # deg
     p = qR[7] # rad/s
     q = qR[9] # rad/s
     r = qR[11] # rad/s
     op_point = asb.OperatingPoint(velocity, alpha, beta, p, q, r)
-    analysis=  asb.LiftingLine(airplane,op_point)
+    analysis =  asb.LiftingLine(airplane,op_point)
     return analysis.run()
 
 def make_body(file, scale, cg, mass, inertia):
@@ -385,7 +386,11 @@ class Aircraft:
         lagrangian = KE + PE
         n_aero = 2
         n_thrust = 0
-        aero_data = system.liftinglinemethod(system.airplane, q)
+        windx = system_def['external_forces']['wind_strength_x']
+        windy = system_def['external_forces']['wind_strength_y']
+        windz = system_def['external_forces']['wind_strength_z']
+        wind = jnp.array([windx, windy, windz])
+        aero_data = system.liftinglinemethod(system.airplane, q, wind)
         aero_transforce = aero_data['F_b']
         aero_rotmoment = aero_data['M_b']
         
