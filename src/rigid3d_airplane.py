@@ -47,7 +47,7 @@ def liftinglinemethod(airplane, q, wind):
     analysis =  asb.LiftingLine(airplane,op_point)
     return analysis.run()
 
-def make_body(file, scale, cg, mass, inertia):
+def make_body(file, scale, mass, inertia):
     v, f = igl.read_triangle_mesh(file)
     v = scale*v
 
@@ -109,12 +109,15 @@ def bodiesToStructOfArrays(bodies):
     W_arr = []
     x0_arr = []
     mass_arr = []
+    inertia_arr = []
+
     for b in bodies:
         v_arr.append(b['v'])
         f_arr.append(b['f'])
         W_arr.append(b['W'])
         x0_arr.append(b['x0'])
         mass_arr.append(b['mass'])
+        inertia_arr.append(b['inertia'])
     
     out_struct = {
         'v'     : jnp.stack(v_arr, axis=0),
@@ -122,6 +125,7 @@ def bodiesToStructOfArrays(bodies):
         'W'     : jnp.stack(W_arr, axis=0),
         'x0'    : jnp.stack(x0_arr, axis=0),
         'mass'  : jnp.stack(mass_arr, axis=0),
+        'inertia' : jnp.stack(inertia_arr, axis=0),
     }
 
     n_bodies = len(v_arr)
@@ -150,12 +154,15 @@ class Aircraft:
         joint_list = []
         numBodiesFixed = 0
 
-        if problem_name == 'generic airplane':
+        if problem_name == 'generic_airplane':
             scale = 1
+
+            mass = 3*np.eye(3)
+            inertia = np.eye(3)
             
             # Add all the necessary bodies
-            bodies.append( make_body_noinput( os.path.join(".", "data", "Body1.obj"), 1000, scale))
-            
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), scale, mass, inertia))
+
             numBodiesFixed = 0
 
             # Define the external forces
@@ -214,8 +221,10 @@ class Aircraft:
                                             name="Fuselage",
                                             xsecs = [
                                                 asb.FuselageXSec(
-                                                    xyz_c = [0, 0, 0]
+                                                    xyz_c=[0.8 * xi - 0.1, 0, 0.1 * xi - 0.03],
+                                                    radius=0.6 * asb.Airfoil("dae51").local_thickness(x_over_c=xi)
                                                 )
+                                                for xi in asbnp.cosspace(0, 1, 30)
                                             ]
                                         )
                                     ]
@@ -359,10 +368,19 @@ class Aircraft:
     def potential_energy(self, system_def, q):
         # TODO implement
         qR = q.reshape(-1,12,1)
-        q_pos = qR[::2]
-        q_xyz = q_pos[0:2]
+
+        #q_pos = qR[::2]
+        #q_xyz = q_pos[0:2]
+
+        # Create an array of even indices
+        indices_even = np.arange(0, len(qR), 2)
+        indices_linpos = np.arange(0,2)
+
+        # Use np.take to extract elements at even indices
+        q_pos = np.take(qR, indices_even)
+        q_xyz = jnp.extract(indices_linpos, q_pos)
         massR = system_def['mass'].reshape(-1,3,3)
-        gravity = system_def["gravity"]
+        gravity = system_def["gravity"]    
         c_weighted = massR*q_xyz
         gravity_energy = -jnp.sum(c_weighted * gravity[None,:])
         
