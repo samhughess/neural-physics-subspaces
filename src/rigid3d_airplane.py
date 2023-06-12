@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import grad, jit, vmap
+from jax import grad, jit, vmap, device_get
 #import fixed_point_projection
 import numpy as np
 import os
@@ -23,11 +23,16 @@ import config
 
 ## Define functions
 
-def vortexlatticemethod(airplane_object, vel, aoa):
-    vlm = asb.VortexLatticeMethod(airplane=airplane_object, 
+def vortexlatticemethod(airplane, q, wind):
+    qR = q.reshape(-1,12,1)
+    vel_array = jnp.array([qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]])
+    vel_relative = jnp.add(vel_array, wind)
+    velocity = jnp.linalg.norm(vel_relative) # m/s
+    alpha = jnp.arctanh(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
+    vlm = asb.VortexLatticeMethod(airplane=airplane, 
                                   op_point=asb.OperatingPoint(
-                                        velocity = vel, # in m/s
-                                        alpha = aoa, # in degrees
+                                        velocity = velocity, # in m/s
+                                        alpha = alpha, # in degrees
                                   )
     )
     aero = vlm.run()
@@ -35,14 +40,15 @@ def vortexlatticemethod(airplane_object, vel, aoa):
 
 def liftinglinemethod(airplane, q, wind):
     qR = q.reshape(-1,12,1)
-    vel_array = jnp.array({qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]})
+    vel_array = jnp.array([qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]])
     vel_relative = jnp.add(vel_array, wind)
     velocity = jnp.linalg.norm(vel_relative) # m/s
     alpha = jnp.arctanh(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
     beta = jnp.arctanh(jnp.true_divide(vel_relative[3], vel_relative[1])) # deg
-    p = qR[7] # rad/s
-    q = qR[9] # rad/s
-    r = qR[11] # rad/s
+    print(beta)
+    p = qR[-1,7,1] # rad/s
+    q = qR[-1,9,1] # rad/s
+    r = qR[-1,11,1] # rad/s
     op_point = asb.OperatingPoint(velocity, alpha, beta, p, q, r)
     analysis =  asb.LiftingLine(airplane,op_point)
     return analysis.run()
@@ -374,11 +380,10 @@ class Aircraft:
 
         # Create an array of even indices
         indices_even = np.arange(0, len(qR), 2)
-        indices_linpos = np.arange(0,2)
 
         # Use np.take to extract elements at even indices
-        q_pos = np.take(qR, indices_even)
-        q_xyz = jnp.extract(indices_linpos, q_pos)
+        q_pos = jnp.take(qR, indices_even)
+        q_xyz = jnp.take(q_pos, jnp.array([0, 1, 2]))
         massR = system_def['mass'].reshape(-1,3,3)
         gravity = system_def["gravity"]    
         c_weighted = massR*q_xyz
@@ -408,7 +413,7 @@ class Aircraft:
         windy = system_def['external_forces']['wind_strength_y']
         windz = system_def['external_forces']['wind_strength_z']
         wind = jnp.array([windx, windy, windz])
-        aero_data = system.liftinglinemethod(system.airplane, q, wind)
+        aero_data = vortexlatticemethod(system.airplane, q, wind)
         aero_transforce = aero_data['F_b']
         aero_rotmoment = aero_data['M_b']
         
@@ -424,14 +429,16 @@ class Aircraft:
 
     def ke_translation(self, system_def, q):
         qR = q.reshape(-1,12,1)
-        velocity = jnp.array({qR[1], qR[3], qR[5]})
+        velocity = jnp.array([qR[-1,1,1], qR[-1,3,1], qR[-1,5,1]])
+        velocity_reshaped = jnp.expand_dims(velocity, axis=(0, 2))
         massR = system_def['mass'].reshape(-1,3,3)
         ke_translational = 0.5*jnp.transpose(velocity)*massR*velocity
+
         return ke_translational
     
     def ke_rotational(self, system_def, q):
         qR = q.reshape(-1,12,1)
-        omega = jnp.array({qR[7], qR[9], qR[11]})
+        omega = jnp.array([qR[-1,7,1], qR[-1,9,1], qR[-1,11,1]])
         inertiaR = system_def['inertia'].reshape(-1, 3, 3)
         ke_rot = 0.5*jnp.transpose(omega)*inertiaR*omega
         return ke_rot
@@ -439,9 +446,9 @@ class Aircraft:
     def dissipation_fnc(self, n, c, q, style):
         qR = q.reshape(-1,12,1)
         if style == "translation":
-            q_dot = jnp.array({qR[1], qR[3], qR[5]})
+            q_dot = jnp.array([qR[-1,1,1], qR[-1,3,1], qR[-1,5,1]])
         elif style == "rotation":
-            q_dot = jnp.array({qR[7], qR[9], qR[11]})
+            q_dot = jnp.array([qR[-1,7,1], qR[-1,9,1], qR[-1,11,1]])
         else:
             print("Specified style not found. Use either ''translation'' or ''rotation'' as style name")
         D = 1/(n+1)*c*q_dot
