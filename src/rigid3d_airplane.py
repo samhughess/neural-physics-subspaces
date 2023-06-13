@@ -413,7 +413,7 @@ class Aircraft:
         windy = system_def['external_forces']['wind_strength_y']
         windz = system_def['external_forces']['wind_strength_z']
         wind = jnp.array([windx, windy, windz])
-        aero_data = vortexlatticemethod(system.airplane, q, wind)
+        aero_data = liftinglinemethod(system.airplane, q, wind)
         aero_transforce = aero_data['F_b']
         aero_rotmoment = aero_data['M_b']
         
