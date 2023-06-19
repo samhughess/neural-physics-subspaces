@@ -12,7 +12,6 @@ import scipy.spatial.transform as transform
 
 import jax_transformations3d as jaxtran
 
-
 try:
     import igl
 finally:
@@ -285,9 +284,90 @@ class Aircraft:
             system_def['external_forces']['toprotor_velocity'] = 0.0
 
             # Define airplane parameters for aero calcs
-            name = "stoprotor_vtol"
-            airfoil = "naca0012"
-            symmetry = True
+            name_airplane = "stoprotor_vtol"
+            airfoil_airplane = "clarky"
+            symmetry = False
+
+            # Declare the airplane
+            wing_airfoil = asb.Airfoil(airfoil_airplane)
+            airplane = asb.Airplane(name = name_airplane,
+                                    xyz_ref = [0, 0, 0], # Cg location
+                                    wings=[
+                                        asb.Wing(
+                                            name = "Right Wing",
+                                            symmetric = False,
+                                            xsecs = [
+                                                asb.WingXSec(
+                                                    xyz_le = [0.04, 0.05, -0.085],
+                                                    chord = 0.16,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [0.018, 0.170, -0.085],
+                                                    chord = 0.112,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [-0.0025, 0.3, -0.085],
+                                                    chord = 0.064,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                            ]
+                                        ),
+                                        asb.Wing(
+                                            name = "Left Wing",
+                                            symmetric = False,
+                                            xsecs = [
+                                                asb.WingXSec(
+                                                    xyz_le = [-0.04, -0.05, -0.085],
+                                                    chord = 0.16,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [-0.018, -0.170, -0.085],
+                                                    chord = 0.112,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [0.0025, -0.3, -0.085],
+                                                    chord = 0.064,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    fuselages = [
+                                        asb.Fuselage(
+                                            name="Fuselage",
+                                            xsecs = [
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0, 0, 0],
+                                                    width = 0.16,
+                                                    height = 0.24, 
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0, 0.038, 0],
+                                                    width = 0.16,
+                                                    height = 0.19, 
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0, 0.179, 0],
+                                                    width = 0.05,
+                                                    height = 0.02, 
+                                                ),
+                                            ]
+                                        )
+                                    ]
+                                )
+            
+            system.airplane = airplane
+
 
             
         elif problem_name == 'stoprotor_forwardflight':
@@ -333,9 +413,41 @@ class Aircraft:
             system_def['external_forces']['thrust_angle_right'] = 0.0
 
             # Define airplane parameters for aero calcs
-            name = "stoprotor_forwardflight"
-            airfoil = "naca0012"
-            symmetry = False
+            name_airplane = "stoprotor_vtol"
+            airfoil_airplane = "clarky"
+            symmetry = True
+
+            # Declare the airplane
+            wing_airfoil = asb.Airfoil(airfoil_airplane)
+            airplane = asb.Airplane(name = name_airplane,
+                                    xyz_ref = [0, 0, 0], # Cg location
+                                    wings=[
+                                        asb.Wing(
+                                            name = "Right Wing",
+                                            symmetric = True,
+                                            xsecs = [
+                                                asb.WingXSec(
+                                                    xyz_le = [0.04, 0.05, -0.085],
+                                                    chord = 0.16,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [0.018, 0.170, -0.085],
+                                                    chord = 0.112,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                                asb.WingXSec(
+                                                    xyz_le = [-0.0025, 0.3, -0.085],
+                                                    chord = 0.064,
+                                                    twist = 0,
+                                                    airfoil = wing_airfoil
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+            )
 
         else:
             raise ValueError("could not parse problem name: " + str(problem_name))
