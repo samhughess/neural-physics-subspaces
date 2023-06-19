@@ -299,19 +299,19 @@ class Aircraft:
                                             xsecs = [
                                                 asb.WingXSec(
                                                     xyz_le = [0.04, 0.05, -0.085],
-                                                    chord = 0.16,
+                                                    chord = -0.16,
                                                     twist = 0,
                                                     airfoil = wing_airfoil
                                                 ),
                                                 asb.WingXSec(
                                                     xyz_le = [0.018, 0.170, -0.085],
-                                                    chord = 0.112,
+                                                    chord = -0.112,
                                                     twist = 0,
                                                     airfoil = wing_airfoil
                                                 ),
                                                 asb.WingXSec(
                                                     xyz_le = [-0.0025, 0.3, -0.085],
-                                                    chord = 0.064,
+                                                    chord = -0.064,
                                                     twist = 0,
                                                     airfoil = wing_airfoil
                                                 ),
@@ -348,18 +348,57 @@ class Aircraft:
                                             xsecs = [
                                                 asb.FuselageXSec(
                                                     xyz_c=[0, 0, 0],
-                                                    width = 0.16,
-                                                    height = 0.24, 
-                                                ),
-                                                asb.FuselageXSec(
-                                                    xyz_c=[0, 0.038, 0],
-                                                    width = 0.16,
-                                                    height = 0.19, 
-                                                ),
-                                                asb.FuselageXSec(
-                                                    xyz_c=[0, 0.179, 0],
-                                                    width = 0.05,
+                                                    width = 0.5,
                                                     height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0.084, 0, 0],
+                                                    width = 0.5,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.084, 0, 0],
+                                                    width = 0.5,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.084, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0.084, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0.025, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.24,
+                                                    shape = 100, 
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.025, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.084, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
                                                 ),
                                             ]
                                         )
@@ -447,6 +486,67 @@ class Aircraft:
                                             ]
                                         ),
                                     ],
+                                    fuselages = [
+                                        asb.Fuselage(
+                                            name="Fuselage",
+                                            xsecs = [
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0, 0, 0],
+                                                    width = 0.5,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0.084, 0, 0],
+                                                    width = 0.5,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.084, 0, 0],
+                                                    width = 0.5,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.084, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.02, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0.084, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0.025, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[0, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.24,
+                                                    shape = 100, 
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.025, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                                asb.FuselageXSec(
+                                                    xyz_c=[-0.084, 0, 0],
+                                                    width = 0.1,
+                                                    height = 0.12, 
+                                                    shape = 100,
+                                                ),
+                                            ]
+                                        )
+                                    ]
             )
 
         else:
