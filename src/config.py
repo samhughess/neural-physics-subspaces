@@ -4,6 +4,7 @@ import jax
 from fem_model import FEMSystem
 from rigid3d_model import Rigid3DSystem
 from rigid3d_airplane import Aircraft
+from rigid3d_model_pendulum import Pendulum
 
 
 ### Set up the argument parser
@@ -52,6 +53,7 @@ system_class_registry = {
         'fem' : FEMSystem,
         'rigid3d' : Rigid3DSystem,
         'airplane' : Aircraft,
+        'pendulum' : Pendulum
     }
 
 def construct_system_from_name(system_name, problem_name):
