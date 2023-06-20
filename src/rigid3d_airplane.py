@@ -7,10 +7,11 @@ import polyscope as ps
 import polyscope.imgui as psim
 import aerosandbox as asb
 import aerosandbox.numpy as asbnp
-
 import scipy.spatial.transform as transform
+import jax,ll2,op2
 
-import jax_transformations3d as jaxtran
+
+#import jax_transformations3d as jaxtran
 
 try:
     import igl
@@ -23,6 +24,7 @@ import config
 ## Define functions
 
 def vortexlatticemethod(airplane, q, wind):
+    
     qR = q.reshape(-1,12,1)
     vel_array = jnp.array([qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]])
     vel_relative = jnp.add(vel_array, wind)
@@ -37,20 +39,26 @@ def vortexlatticemethod(airplane, q, wind):
     aero = vlm.run()
     return aero # Note: aero is a dictionary object with L, D, Y, l, m ,n, CL, CD, CU, Cl, CD, etc... F_g, F_w, M_g, M_w
 
+
+
 def liftinglinemethod(airplane, q, wind):
+  
     qR = q.reshape(-1,12,1)
     vel_array = jnp.array([qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]])
     vel_relative = jnp.add(vel_array, wind)
     velocity = jnp.linalg.norm(vel_relative) # m/s
     alpha = jnp.arctanh(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
     beta = jnp.arctanh(jnp.true_divide(vel_relative[3], vel_relative[1])) # deg
-    print(beta)
     p = qR[-1,7,1] # rad/s
     q = qR[-1,9,1] # rad/s
     r = qR[-1,11,1] # rad/s
-    op_point = asb.OperatingPoint(velocity, alpha, beta, p, q, r)
-    analysis =  asb.LiftingLine(airplane,op_point)
-    return analysis.run()
+    op_point = op2.OperatingPoint2(velocity, alpha, beta, p, q, r)
+
+    analysis = ll2.LiftingLine(airplane,op_point)
+    analysis.run()
+    return analysis
+
+
 
 def make_body(file, scale, mass, inertia):
     v, f = igl.read_triangle_mesh(file)
@@ -71,7 +79,8 @@ def make_body(file, scale, mass, inertia):
     # x0 = jnp.array([cg, omega])
     x0 = jnp.array([c[0], 0, c[1], 0, c[2], 0, 0, 0, 0, 0, 0, 0])
 
-    body = {'v': v, 'f': f, 'W': W, 'x0': x0, 'mass': mass, 'inertia': inertia }
+
+    body = {'v': v, 'f': f, 'W': W, 'x0': x0, 'mass': mass, 'inertia': inertia}
     return body
 
 def make_body_noinput(file, density, scale):
@@ -82,10 +91,10 @@ def make_body_noinput(file, density, scale):
     vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
 
     # c is the initial center of mass
-    c = np.sum( vol[:,None]*v, axis=0 ) / np.sum(vol) 
+    c = jnp.sum( vol[:,None]*v, axis=0 ) / jnp.sum(vol) 
     v = v - c
-    W = np.c_[v, np.ones(v.shape[0])]
-    mass = np.matmul(W.T, vol[:,None]*W) * density
+    W = jnp.c_[v, jnp.ones(v.shape[0])]
+    mass = jnp.matmul(W.T, vol[:,None]*W) * density
 
     x0 = jnp.array( [[1, 0, 0],[0, 1, 0],[0, 0, 1], c] )
 
@@ -575,6 +584,8 @@ class Aircraft:
 
         system_def['interesting_states'] = system_def['init_pos'][None,:]
 
+        #val = jnp.sum(jnp.square(pos), axis = 0) part of potential inertia calc
+
         return system, system_def
   
     # ===========================================
@@ -604,7 +615,7 @@ class Aircraft:
         return gravity_energy
    
     
-    def ke_error(self, system_def, q_dot):
+    def ke_error(self, system_def, q, q_dot):
         q_dotR = q_dot.reshape(-1,12,1)
         massR = system_def['mass'].reshape(-1,4,4)
         A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_dotR
@@ -614,6 +625,7 @@ class Aircraft:
     
     def action(self, system, system_def, q):
         # TODO add all forces
+        print("tvtv", type(q))
         PE = system.potential_energy(system_def, q)
         ke_transl = system.ke_translation(system_def, q)
         ke_rot = system.ke_rotational(system_def, q)
@@ -625,9 +637,18 @@ class Aircraft:
         windy = system_def['external_forces']['wind_strength_y']
         windz = system_def['external_forces']['wind_strength_z']
         wind = jnp.array([windx, windy, windz])
+     
+        #need to figure out what looking for here since lifting line has no return value
+
         aero_data = liftinglinemethod(system.airplane, q, wind)
-        aero_transforce = aero_data['F_b']
-        aero_rotmoment = aero_data['M_b']
+    
+        # aero_transforce = aero_data['F_b']
+        # aero_rotmoment = aero_data['M_b']
+        #not exactly sure right values here
+        aero_transforce = aero_data._calculate_forces().forces_inviscid_geometry
+        
+        aero_rotmoment = aero_data._calculate_forces().moments_inviscid_geometry
+
         
         thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
         thrust_force_right =  system_def['external_forces']['thrust_strength_right']*jnp.array([-1, 0, 0])

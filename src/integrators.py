@@ -84,6 +84,7 @@ def state_style(method):
         raise ValueError("unrecognized method")
 
 
+
 @partial(jax.jit,
          static_argnames=['system', 'int_opts_tuple', 'subspace_fn', 'subspace_domain_tuple'])
 def timestep_internal(system,
@@ -99,6 +100,7 @@ def timestep_internal(system,
 
     other_outs = None
 
+    
     if int_opts['method'] == 'implicit-proximal':
         proximal_step(system, system_def, int_state, int_opts, subspace_fn, subspace_domain_dict)
 

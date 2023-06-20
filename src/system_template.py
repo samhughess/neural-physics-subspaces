@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from jax import grad, jit, vmap
-import fixed_point_projection
+#import fixed_point_projection
 import numpy as np
 import polyscope as ps
 

@@ -103,7 +103,6 @@ def main():
     rngkey, subkey = jax.random.split(rngkey)
     model = layers.create_model(model_spec, subkey, base_output=base_state)
     model_params, model_static = eqx.partition(model, eqx.is_array)
-
     # Dictionary of other parameters which *are* updated by the optimizer
     # other_params = {'base_state': base_state}
     other_params = {}
@@ -119,6 +118,7 @@ def main():
     def mollify_norm(x, eps=1e-20):
         return jnp.sqrt(jnp.sum(jnp.square(x)) + eps)
 
+
     # Evaluate
     def sample_system_and_Epot(system_def, model_params, other_params, ex_params, rngkey):
         system_def = system_def.copy()
@@ -129,14 +129,18 @@ def main():
         cond_params = system.sample_conditional_params(system_def, subkey, rho=t_schedule)
         system_def['cond_param'] = cond_params
 
+        
         subspace_f = lambda zz: apply_subspace(model_params, zz, cond_params, t_schedule)
-
+       
+    
         # Sample latent value
         rngkey, subkey = jax.random.split(rngkey)
         z = sample_subspace(1, subkey)[0, :]
 
         # Map the latent state to config space
         q = subspace_f(z)
+        
+       
         E_pot = system.action(system, system_def, q)
 
         return z, cond_params, q, E_pot
@@ -150,6 +154,7 @@ def main():
         stats = {}
 
         def q_dists_one(q):
+
             return jax.vmap(partial(system.ke_error, system_def,
                                     q))(q_batch - q[None, :]) + DIST_EPS
 

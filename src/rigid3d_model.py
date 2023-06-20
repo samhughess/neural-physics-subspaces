@@ -22,6 +22,7 @@ def make_body(file, density, scale):
     v, f = igl.read_triangle_mesh(file)
     v = scale*v
 
+    #vol is mass at each vertex
     vol = igl.massmatrix(v,f).data
     vol = np.nan_to_num(vol) # massmatrix returns Nans in some stewart meshes
 
@@ -29,6 +30,7 @@ def make_body(file, density, scale):
     v = v - c
 
     W = np.c_[v, np.ones(v.shape[0])]
+    print("board", W.shape)
     mass = np.matmul(W.T, vol[:,None]*W) * density
 
     x0 = jnp.array( [[1, 0, 0],[0, 1, 0],[0, 0, 1], c] )
