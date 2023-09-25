@@ -68,7 +68,7 @@ def rotation_matrix_3D(
     Returns:
         The rotation matrix, with type according to the parameter `as_array`.
     """
-    print("neh", type(angle))
+
     s = jnp.sin(angle)
   
     c = jnp.cos(angle)

@@ -528,6 +528,7 @@ class LiftingLine(ImplicitAnalysis):
         else:
             raise ValueError("Bad value of `backend`!")
 
+    #will need this fnc eventually
     def _setup_geometry(self):
         if self.verbose:
             print("Calculating the vortex center velocity influence matrix...")
@@ -548,103 +549,121 @@ class LiftingLine(ImplicitAnalysis):
         self.freestream_velocities = cas.transpose(self.steady_freestream_velocity + cas.transpose(
             self.rotation_freestream_velocities))  # Nx3, represents the freestream velocity at each vortex center
 
+   #this needs to run
     def _calculate_vortex_strengths(self):
         if self.verbose:
             print("Calculating vortex strengths...")
-
+        self.n_panels = 1
         # Set up implicit solve (explicit is not possible for general nonlinear problem)
-        self.vortex_strengths = self.opti.variable(self.n_panels)
-        self.opti.set_initial(self.vortex_strengths, 0)
-
+        #need to change to jax; think found different workaround last time (edit later)
+        #self.vortex_strengths = self.opti.variable(self.n_panels)
+        self.vortex_strengths = jnp.array([[1],[1],[1],[1]])
+        #self.opti.set_initial(self.vortex_strengths, 0)
+        self._setup_geometry()
         # Find velocities
-        self.induced_velocities = cas.horzcat(
-            self.Vij_x @ self.vortex_strengths,
-            self.Vij_y @ self.vortex_strengths,
-            self.Vij_z @ self.vortex_strengths,
-        )
+        print('get89' ,jnp.shape(self.vortex_strengths))
+        self.induced_velocities = jnp.stack((
+            jnp.dot(self.Vij_x, self.vortex_strengths),
+            jnp.dot(self.Vij_y, self.vortex_strengths),
+            jnp.dot(self.Vij_z, self.vortex_strengths),
+        ), axis=-1)
+
+        # self.induced_velocities = cas.horzcat(
+        #     self.Vij_x @ self.vortex_strengths,
+        #     self.Vij_y @ self.vortex_strengths,
+        #     self.Vij_z @ self.vortex_strengths,
+        # )
         self.velocities = self.induced_velocities + self.freestream_velocities + self.fuselage_velocities  # TODO just a reminder, fuse added here
-        self.alpha_eff_perpendiculars = cas.atan2(
-            (
-                    self.velocities[:, 0] * self.normal_directions[:, 0] +
-                    self.velocities[:, 1] * self.normal_directions[:, 1] +
-                    self.velocities[:, 2] * self.normal_directions[:, 2]
-            ),
-            (
-                    self.velocities[:, 0] * -self.local_forward_directions[:, 0] +
-                    self.velocities[:, 1] * -self.local_forward_directions[:, 1] +
-                    self.velocities[:, 2] * -self.local_forward_directions[:, 2]
-            )
-        ) * (180 / cas.pi)
-        self.velocity_magnitudes = np.sqrt(
+        # self.alpha_eff_perpendiculars = cas.atan2(
+        #     (
+        #             self.velocities[:, 0] * self.normal_directions[:, 0] +
+        #             self.velocities[:, 1] * self.normal_directions[:, 1] +
+        #             self.velocities[:, 2] * self.normal_directions[:, 2]
+        #     ),
+        #     (
+        #             self.velocities[:, 0] * -self.local_forward_directions[:, 0] +
+        #             self.velocities[:, 1] * -self.local_forward_directions[:, 1] +
+        #             self.velocities[:, 2] * -self.local_forward_directions[:, 2]
+        #     )
+        # ) * (180 / cas.pi)
+        self.velocity_magnitudes = jnp.sqrt(
             self.velocities[:, 0] ** 2 +
             self.velocities[:, 1] ** 2 +
             self.velocities[:, 2] ** 2
         )
-        self.Res = self.op_point.density * self.velocity_magnitudes * self.chords / self.op_point.viscosity
-        self.machs = [self.op_point.mach] * self.n_panels  # TODO incorporate sweep effects here!
+        #self.Res = self.op_point.density * self.velocity_magnitudes * self.chords / self.op_point.viscosity
+        #self.machs = [self.op_point.mach] * self.n_panels  # TODO incorporate sweep effects here!
 
         # Get perpendicular parameters
-        self.cos_sweeps = (
-                                  self.velocities[:, 0] * -self.local_forward_directions[:, 0] +
-                                  self.velocities[:, 1] * -self.local_forward_directions[:, 1] +
-                                  self.velocities[:, 2] * -self.local_forward_directions[:, 2]
-                          ) / self.velocity_magnitudes
-        self.chord_perpendiculars = self.chords * self.cos_sweeps
-        self.velocity_magnitude_perpendiculars = self.velocity_magnitudes * self.cos_sweeps
-        self.Res_perpendicular = self.Res * self.cos_sweeps
-        self.machs_perpendicular = self.machs * self.cos_sweeps
+        # self.cos_sweeps = (
+        #                           self.velocities[:, 0] * -self.local_forward_directions[:, 0] +
+        #                           self.velocities[:, 1] * -self.local_forward_directions[:, 1] +
+        #                           self.velocities[:, 2] * -self.local_forward_directions[:, 2]
+        #                   ) / self.velocity_magnitudes
+        # self.chord_perpendiculars = self.chords * self.cos_sweeps
+        # self.velocity_magnitude_perpendiculars = self.velocity_magnitudes * self.cos_sweeps
+        # self.Res_perpendicular = self.Res * self.cos_sweeps
+        # self.machs_perpendicular = self.machs * self.cos_sweeps
 
-        CL_locals = [
-            self.CL_functions[i](
-                alpha=self.alpha_eff_perpendiculars[i],
-                Re=self.Res_perpendicular[i],
-                mach=self.machs_perpendicular[i],
-            ) for i in range(self.n_panels)
-        ]
-        CDp_locals = [
-            self.CD_functions[i](
-                alpha=self.alpha_eff_perpendiculars[i],
-                Re=self.Res_perpendicular[i],
-                mach=self.machs_perpendicular[i],
-            ) for i in range(self.n_panels)
-        ]
-        Cm_locals = [
-            self.CM_functions[i](
-                alpha=self.alpha_eff_perpendiculars[i],
-                Re=self.Res_perpendicular[i],
-                mach=self.machs_perpendicular[i],
-            ) for i in range(self.n_panels)
-        ]
-        self.CL_locals = cas.vertcat(*CL_locals)
-        self.CDp_locals = cas.vertcat(*CDp_locals)
-        self.Cm_locals = cas.vertcat(*Cm_locals)
+        # CL_locals = [
+        #     self.CL_functions[i](
+        #         alpha=self.alpha_eff_perpendiculars[i],
+        #         Re=self.Res_perpendicular[i],
+        #         mach=self.machs_perpendicular[i],
+        #     ) for i in range(self.n_panels)
+        # ]
+        # CDp_locals = [
+        #     self.CD_functions[i](
+        #         alpha=self.alpha_eff_perpendiculars[i],
+        #         Re=self.Res_perpendicular[i],
+        #         mach=self.machs_perpendicular[i],
+        #     ) for i in range(self.n_panels)
+        # ]
+        # Cm_locals = [
+        #     self.CM_functions[i](
+        #         alpha=self.alpha_eff_perpendiculars[i],
+        #         Re=self.Res_perpendicular[i],
+        #         mach=self.machs_perpendicular[i],
+        #     ) for i in range(self.n_panels)
+        # ]
+        # self.CL_locals = cas.vertcat(*CL_locals)
+        # self.CDp_locals = cas.vertcat(*CDp_locals)
+        # self.Cm_locals = cas.vertcat(*Cm_locals)
 
-        self.Vi_cross_li = cas.horzcat(
+        self.Vi_cross_li = jnp.stack((
             self.velocities[:, 1] * self.vortex_bound_leg[:, 2] - self.velocities[:, 2] * self.vortex_bound_leg[:, 1],
             self.velocities[:, 2] * self.vortex_bound_leg[:, 0] - self.velocities[:, 0] * self.vortex_bound_leg[:, 2],
-            self.velocities[:, 0] * self.vortex_bound_leg[:, 1] - self.velocities[:, 1] * self.vortex_bound_leg[:, 0],
-        )
-        Vi_cross_li_magnitudes = np.sqrt(
-            self.Vi_cross_li[:, 0] ** 2 +
-            self.Vi_cross_li[:, 1] ** 2 +
-            self.Vi_cross_li[:, 2] ** 2
-        )
+            self.velocities[:, 0] * self.vortex_bound_leg[:, 1] - self.velocities[:, 1] * self.vortex_bound_leg[:, 0]
+        ), axis=-1)
+        # self.Vi_cross_li = cas.horzcat(
+        #     self.velocities[:, 1] * self.vortex_bound_leg[:, 2] - self.velocities[:, 2] * self.vortex_bound_leg[:, 1],
+        #     self.velocities[:, 2] * self.vortex_bound_leg[:, 0] - self.velocities[:, 0] * self.vortex_bound_leg[:, 2],
+        #     self.velocities[:, 0] * self.vortex_bound_leg[:, 1] - self.velocities[:, 1] * self.vortex_bound_leg[:, 0],
+        # )
+        # Vi_cross_li_magnitudes = np.sqrt(
+        #     self.Vi_cross_li[:, 0] ** 2 +
+        #     self.Vi_cross_li[:, 1] ** 2 +
+        #     self.Vi_cross_li[:, 2] ** 2
+        # )
 
+        # # self.opti.subject_to([
+        # #     self.vortex_strengths * Vi_cross_li_magnitudes ==
+        # #     0.5 * self.velocity_magnitude_perpendiculars ** 2 * self.CL_locals * self.areas
+        # # ])
         # self.opti.subject_to([
-        #     self.vortex_strengths * Vi_cross_li_magnitudes ==
-        #     0.5 * self.velocity_magnitude_perpendiculars ** 2 * self.CL_locals * self.areas
+        #     self.vortex_strengths * Vi_cross_li_magnitudes * 2 / self.velocity_magnitude_perpendiculars ** 2 / self.areas ==
+        #     self.CL_locals
         # ])
-        self.opti.subject_to([
-            self.vortex_strengths * Vi_cross_li_magnitudes * 2 / self.velocity_magnitude_perpendiculars ** 2 / self.areas ==
-            self.CL_locals
-        ])
 
     def _calculate_forces(self):
 
         if self.verbose:
             print("Calculating induced forces...")
+        #guessing want a 4x3 here
         self.forces_inviscid_geometry = self.op_point.density * self.Vi_cross_li * self.vortex_strengths
-        force_total_inviscid_geometry = cas.vertcat(
+        
+        #want this value (pretty sure want this to be a 1x3)
+        self.force_total_inviscid_geometry = cas.vertcat(
             cas.sum1(self.forces_inviscid_geometry[:, 0]),
             cas.sum1(self.forces_inviscid_geometry[:, 1]),
             cas.sum1(self.forces_inviscid_geometry[:, 2]),
@@ -661,16 +680,19 @@ class LiftingLine(ImplicitAnalysis):
                 cas.sum1(forces_inviscid_geometry_from_symmetry[:, 2]),
             )
             force_total_inviscid_geometry += force_total_inviscid_geometry_from_symmetry
+       
         self.force_total_inviscid_wind = cas.transpose(
             self.op_point.compute_rotation_matrix_wind_to_geometry()) @ force_total_inviscid_geometry
 
         if self.verbose:
             print("Calculating induced moments...")
+        
         self.moments_inviscid_geometry = cas.cross(
             cas.transpose(cas.transpose(self.vortex_centers) - self.airplane.xyz_ref),
             self.forces_inviscid_geometry
         )
-        moment_total_inviscid_geometry = cas.vertcat(
+        #also want this value
+        self.moment_total_inviscid_geometry = cas.vertcat(
             cas.sum1(self.moments_inviscid_geometry[:, 0]),
             cas.sum1(self.moments_inviscid_geometry[:, 1]),
             cas.sum1(self.moments_inviscid_geometry[:, 2]),
@@ -805,21 +827,27 @@ class LiftingLine(ImplicitAnalysis):
                       ):
         # Calculates Vij, the velocity influence matrix (First index is collocation point number, second index is vortex number).
         # points: the list of points (Nx3) to calculate the velocity influence at.
-
+        #need to fix to get a 4x3 output
         n_points = points.shape[0]
-
+       
         # Make a and b vectors.
         # a: Vector from all collocation points to all horseshoe vortex left vertices.
         #   # First index is collocation point #, second is vortex #.
         # b: Vector from all collocation points to all horseshoe vortex right vertices.
         #   # First index is collocation point #, second is vortex #.
-        a_x = points[:, 0] - cas.repmat(cas.transpose(self.left_vortex_vertices[:, 0]), n_points, 1)
-        a_y = points[:, 1] - cas.repmat(cas.transpose(self.left_vortex_vertices[:, 1]), n_points, 1)
-        a_z = points[:, 2] - cas.repmat(cas.transpose(self.left_vortex_vertices[:, 2]), n_points, 1)
-        b_x = points[:, 0] - cas.repmat(cas.transpose(self.right_vortex_vertices[:, 0]), n_points, 1)
-        b_y = points[:, 1] - cas.repmat(cas.transpose(self.right_vortex_vertices[:, 1]), n_points, 1)
-        b_z = points[:, 2] - cas.repmat(cas.transpose(self.right_vortex_vertices[:, 2]), n_points, 1)
-
+        # a_x = points[:, 0] - cas.repmat(cas.transpose(self.left_vortex_vertices[:, 0]), n_points, 1)
+        # a_y = points[:, 1] - cas.repmat(cas.transpose(self.left_vortex_vertices[:, 1]), n_points, 1)
+        # a_z = points[:, 2] - cas.repmat(cas.transpose(self.left_vortex_vertices[:, 2]), n_points, 1)
+        # b_x = points[:, 0] - cas.repmat(cas.transpose(self.right_vortex_vertices[:, 0]), n_points, 1)
+        # b_y = points[:, 1] - cas.repmat(cas.transpose(self.right_vortex_vertices[:, 1]), n_points, 1)
+        # b_z = points[:, 2] - cas.repmat(cas.transpose(self.right_vortex_vertices[:, 2]), n_points, 1)
+        a_x = points[:, 0] - jnp.tile(jnp.transpose(self.left_vortex_vertices[:, 0]), (n_points, 1))
+        a_y = points[:, 1] - jnp.tile(jnp.transpose(self.left_vortex_vertices[:, 1]), (n_points, 1))
+        a_z = points[:, 2] - jnp.tile(jnp.transpose(self.left_vortex_vertices[:, 2]), (n_points, 1))
+        
+        b_x = points[:, 0] - jnp.tile(jnp.transpose(self.right_vortex_vertices[:, 0]), (n_points, 1))
+        b_y = points[:, 1] - jnp.tile(jnp.transpose(self.right_vortex_vertices[:, 1]), (n_points, 1))
+        b_z = points[:, 2] - jnp.tile(jnp.transpose(self.right_vortex_vertices[:, 2]), (n_points, 1))
         if align_trailing_vortices_with_freestream:
             freestream_direction = self.op_point.compute_freestream_direction_geometry_axes()
             u_x = freestream_direction[0]
@@ -835,7 +863,7 @@ class LiftingLine(ImplicitAnalysis):
         a_cross_b_y = a_z * b_x - a_x * b_z
         a_cross_b_z = a_x * b_y - a_y * b_x
         a_dot_b = a_x * b_x + a_y * b_y + a_z * b_z
-
+       
         a_cross_u_x = a_y * u_z - a_z * u_y
         a_cross_u_y = a_z * u_x - a_x * u_z
         a_cross_u_z = a_x * u_y - a_y * u_x
@@ -857,22 +885,41 @@ class LiftingLine(ImplicitAnalysis):
                 a_cross_b_y ** 2 +
                 a_cross_b_z ** 2
         )
-        a_dot_b = cas.if_else(a_cross_b_squared < 1e-8, a_dot_b + 1, a_dot_b)
-        a_cross_u_squared = (
-                a_cross_u_x ** 2 +
-                a_cross_u_y ** 2 +
-                a_cross_u_z ** 2
-        )
-        a_dot_u = cas.if_else(a_cross_u_squared < 1e-8, a_dot_u + 1, a_dot_u)
-        b_cross_u_squared = (
-                b_cross_u_x ** 2 +
-                b_cross_u_y ** 2 +
-                b_cross_u_z ** 2
-        )
-        b_dot_u = cas.if_else(b_cross_u_squared < 1e-8, b_dot_u + 1, b_dot_u)
+        # a_dot_b = cas.if_else(a_cross_b_squared < 1e-8, a_dot_b + 1, a_dot_b)
+        # a_cross_u_squared = (
+        #         a_cross_u_x ** 2 +
+        #         a_cross_u_y ** 2 +
+        #         a_cross_u_z ** 2
+        # )
+        # a_dot_u = cas.if_else(a_cross_u_squared < 1e-8, a_dot_u + 1, a_dot_u)
+        # b_cross_u_squared = (
+        #         b_cross_u_x ** 2 +
+        #         b_cross_u_y ** 2 +
+        #         b_cross_u_z ** 2
+        # )
+        # b_dot_u = cas.if_else(b_cross_u_squared < 1e-8, b_dot_u + 1, b_dot_u)
+        epsilon = 1e-8
 
+        a_dot_b = jnp.where(a_cross_b_squared < epsilon, a_dot_b + 1, a_dot_b)
+        
+        a_cross_u_squared = (
+            a_cross_u_x ** 2 +
+            a_cross_u_y ** 2 +
+            a_cross_u_z ** 2
+        )
+        
+        a_dot_u = jnp.where(a_cross_u_squared < epsilon, a_dot_u + 1, a_dot_u)
+        
+        b_cross_u_squared = (
+            b_cross_u_x ** 2 +
+            b_cross_u_y ** 2 +
+            b_cross_u_z ** 2
+        )
+        
+        b_dot_u = jnp.where(b_cross_u_squared < epsilon, b_dot_u + 1, b_dot_u)
         # Calculate Vij
         term1 = (norm_a_inv + norm_b_inv) / (norm_a * norm_b + a_dot_b)
+        print('pug77', jnp.shape(norm_a_inv))
         term2 = norm_a_inv / (norm_a - a_dot_u)
         term3 = norm_b_inv / (norm_b - b_dot_u)
 
@@ -973,6 +1020,7 @@ class LiftingLine(ImplicitAnalysis):
             Vij_y += cas.transpose(cas.if_else(self.use_symmetry, cas.transpose(Vij_y_from_symmetry), 0))
             Vij_z += cas.transpose(cas.if_else(self.use_symmetry, cas.transpose(Vij_z_from_symmetry), 0))
 
+        print('test99', jnp.shape(Vij_x))
         return Vij_x, Vij_y, Vij_z
 
     def calculate_fuselage_influences(self,
@@ -980,18 +1028,44 @@ class LiftingLine(ImplicitAnalysis):
                                       ):
         n_points = points.shape[0]
 
-        fuselage_influences_x = cas.GenDM_zeros(n_points, 1)
-        fuselage_influences_y = cas.GenDM_zeros(n_points, 1)
-        fuselage_influences_z = cas.GenDM_zeros(n_points, 1)
-
+        # fuselage_influences_x = cas.GenDM_zeros(n_points, 1)
+        # fuselage_influences_y = cas.GenDM_zeros(n_points, 1)
+        # fuselage_influences_z = cas.GenDM_zeros(n_points, 1)
+        fuselage_influences_x = jnp.zeros((n_points, 1))
+        fuselage_influences_y = jnp.zeros((n_points, 1))
+        fuselage_influences_z = jnp.zeros((n_points, 1))
+       
+        #not sure if correct array for fuse_cps or radii
+        self.fuse_centerline_points = np.array(
+            [   [0,0,0,0],
+                [0.25, 0.0, 0.0],
+                [0.5, 0.0, 0.0],
+                [0.75, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ]
+        )
+        #self.fuse_radii = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        self.fuse_radii = np.array(
+            [   [0,0,0,0],
+                [0.25, 0.0, 0.0],
+                [0.5, 0.0, 0.0],
+                [0.75, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ]
+            )
+        
         for fuse_num in range(len(self.airplane.fuselages)):
-            this_fuse_centerline_points = self.fuse_centerline_points[fuse_num]
-            this_fuse_radii = self.fuse_radii[fuse_num]
-
-            dx = points[:, 0] - cas.repmat(cas.transpose(this_fuse_centerline_points[:, 0]), n_points, 1)
-            dy = points[:, 1] - cas.repmat(cas.transpose(this_fuse_centerline_points[:, 1]), n_points, 1)
-            dz = points[:, 2] - cas.repmat(cas.transpose(this_fuse_centerline_points[:, 2]), n_points, 1)
-
+            
+            this_fuse_centerline_points = np.array([self.fuse_centerline_points[fuse_num]])
+            this_fuse_radii = np.array([self.fuse_radii[fuse_num]])
+           
+            # dx = points[:, 0] - cas.repmat(cas.transpose(this_fuse_centerline_points[:, 0]), n_points, 1)
+            # dy = points[:, 1] - cas.repmat(cas.transpose(this_fuse_centerline_points[:, 1]), n_points, 1)
+            # dz = points[:, 2] - cas.repmat(cas.transpose(this_fuse_centerline_points[:, 2]), n_points, 1)
+            
+            dx = points[:, 0] - jnp.tile(jnp.transpose(this_fuse_centerline_points[:, 0]), (n_points, 1))
+            dy = points[:, 1] - jnp.tile(jnp.transpose(this_fuse_centerline_points[:, 1]), (n_points, 1))
+            dz = points[:, 2] - jnp.tile(jnp.transpose(this_fuse_centerline_points[:, 2]), (n_points, 1))
             # # Compressibility
             # dy *= self.beta
             # dz *= self.beta
@@ -1001,26 +1075,43 @@ class LiftingLine(ImplicitAnalysis):
             source_y = (dy[:, 1:] + dy[:, :-1]) / 2
             source_z = (dz[:, 1:] + dz[:, :-1]) / 2
 
-            areas = cas.pi * this_fuse_radii ** 2
-            freestream_x_component = self.op_point.compute_freestream_velocity_geometry_axes()[
-                0]  # TODO add in rotation corrections, add in doublets for alpha
-            strengths = freestream_x_component * cas.diff(areas)
+        #     areas = cas.pi * this_fuse_radii ** 2
+        #     freestream_x_component = self.op_point.compute_freestream_velocity_geometry_axes()[
+        #         0]  # TODO add in rotation corrections, add in doublets for alpha
+        #     strengths = freestream_x_component * cas.diff(areas)
 
-            denominator = 4 * cas.pi * (source_x ** 2 + source_y ** 2 + source_z ** 2) ** 1.5
-            u = cas.transpose(strengths * cas.transpose(source_x / denominator))
-            v = cas.transpose(strengths * cas.transpose(source_y / denominator))
-            w = cas.transpose(strengths * cas.transpose(source_z / denominator))
+        #     denominator = 4 * cas.pi * (source_x ** 2 + source_y ** 2 + source_z ** 2) ** 1.5
+        #     u = cas.transpose(strengths * cas.transpose(source_x / denominator))
+        #     v = cas.transpose(strengths * cas.transpose(source_y / denominator))
+        #     w = cas.transpose(strengths * cas.transpose(source_z / denominator))
 
-            fuselage_influences_x += cas.sum2(u)
-            fuselage_influences_y += cas.sum2(v)
-            fuselage_influences_z += cas.sum2(w)
+        #     fuselage_influences_x += cas.sum2(u)
+        #     fuselage_influences_y += cas.sum2(v)
+        #     fuselage_influences_z += cas.sum2(w)
 
-        fuselage_influences = cas.horzcat(
-            fuselage_influences_x,
-            fuselage_influences_y,
-            fuselage_influences_z
-        )
+        # fuselage_influences = cas.horzcat(
+        #     fuselage_influences_x,
+        #     fuselage_influences_y,
+        #     fuselage_influences_z
 
+            areas = np.pi * this_fuse_radii ** 2
+          
+            freestream_x_component = self.op_point.compute_freestream_velocity_geometry_axes()[0]
+            strengths = freestream_x_component * jnp.diff(areas)
+         
+            denominator = 4 * jnp.pi * (source_x ** 2 + source_y ** 2 + source_z ** 2) ** 1.5
+        
+            u = jnp.transpose(strengths @ jnp.transpose(source_x / denominator))
+            v = jnp.transpose(strengths @ jnp.transpose(source_y / denominator))
+            w = jnp.transpose(strengths @ jnp.transpose(source_z / denominator))
+            
+            fuselage_influences_x += jnp.sum(u)
+            fuselage_influences_y += jnp.sum(v)
+            fuselage_influences_z += jnp.sum(w)
+        
+        fuselage_influences = jnp.hstack((fuselage_influences_x, fuselage_influences_y, fuselage_influences_z))
+
+        #want return to be 4by3
         return fuselage_influences
 
     def get_induced_velocity_at_point(self, point):
@@ -1048,9 +1139,9 @@ class LiftingLine(ImplicitAnalysis):
     def get_velocity_at_point(self, point):
         # Input: a Nx3 numpy array of points that you would like to know the velocities at.
         # Output: a Nx3 numpy array of the velocities at those points.
-
         Vi = self.get_induced_velocity_at_point(point) + self.calculate_fuselage_influences(
             point)  # TODO just a reminder, fuse added here
+
 
         freestream = self.op_point.compute_freestream_velocity_geometry_axes()
 

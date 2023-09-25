@@ -128,8 +128,6 @@ def main():
         rngkey, subkey = jax.random.split(rngkey)
         cond_params = system.sample_conditional_params(system_def, subkey, rho=t_schedule)
         system_def['cond_param'] = cond_params
-
-        
         subspace_f = lambda zz: apply_subspace(model_params, zz, cond_params, t_schedule)
        
     
@@ -142,6 +140,7 @@ def main():
         
        
         E_pot = system.action(system, system_def, q)
+        
 
         return z, cond_params, q, E_pot
 
@@ -203,9 +202,11 @@ def main():
         expand_loss, repel_stats = batch_repulsion(z_samples, q_samples, t_schedule)
         expand_loss = expand_loss * args.weight_expand
 
+    
         loss_dict = {}
         loss_dict['E_pot'] = E_pots
         loss_dict['E_expand'] = expand_loss
+
 
         out_stats_b = {}
         out_stats_b.update(repel_stats)
@@ -221,6 +222,7 @@ def main():
     def train_step(i_iter, rngkey, ex_params, opt_state):
 
         opt_params = opt.params_fn(opt_state)
+    
         (value, (loss_dict, out_stats_b)), grads = jax.value_and_grad(batch_loss_fn,
                                                                       has_aux=True)(opt_params,
                                                                                     ex_params,
@@ -228,7 +230,7 @@ def main():
         opt_state = opt.update_fn(i_iter, grads, opt_state)
 
         # out_stats_b currently unused
-
+      
         return value, loss_dict, opt_state, out_stats_b
 
     print(f"Training...")
@@ -244,14 +246,15 @@ def main():
     ## Main training loop
     for i_train_iter in range(args.n_train_iters):
 
+        
         ex_params['t_schedule'] = i_train_iter / args.n_train_iters
-
+        
+        #this part is going wrong
         rngkey, subkey = jax.random.split(rngkey)
         loss, loss_dict, opt_state, out_stats = train_step(i_train_iter, subkey, ex_params,
                                                            opt_state)
-
         # track statistics
-        loss = float(loss)
+       
         losses.append(loss)
         if 'mean_scale_log' in out_stats:
             mean_scale_log.append(out_stats['mean_scale_log'])

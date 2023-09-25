@@ -29,6 +29,7 @@ def vortexlatticemethod(airplane, q, wind):
     vel_array = jnp.array([qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]])
     vel_relative = jnp.add(vel_array, wind)
     velocity = jnp.linalg.norm(vel_relative) # m/s
+    #alpha should be arctanh but not working correctly
     alpha = jnp.arctanh(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
     vlm = asb.VortexLatticeMethod(airplane=airplane, 
                                   op_point=asb.OperatingPoint(
@@ -47,20 +48,20 @@ def liftinglinemethod(airplane, q, wind):
     vel_array = jnp.array([qR[-1, 1, 1], qR[-1, 3, 1], qR[-1, 5, 1]])
     vel_relative = jnp.add(vel_array, wind)
     velocity = jnp.linalg.norm(vel_relative) # m/s
-    alpha = jnp.arctanh(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
-    beta = jnp.arctanh(jnp.true_divide(vel_relative[3], vel_relative[1])) # deg
+    #these were originally arctanh but had to change because wouldn't run
+    alpha = jnp.arctan(jnp.true_divide(vel_relative[5], vel_relative[1])) # deg
+    beta = jnp.arctan(jnp.true_divide(vel_relative[3], vel_relative[1])) # deg
     p = qR[-1,7,1] # rad/s
     q = qR[-1,9,1] # rad/s
     r = qR[-1,11,1] # rad/s
-    op_point = op2.OperatingPoint2(velocity, alpha, beta, p, q, r)
-
+    op_point = op2.OperatingPoint2(p,q,r,velocity, alpha, beta)
     analysis = ll2.LiftingLine(airplane,op_point)
     analysis.run()
     return analysis
 
 
 
-def make_body(file, scale, mass, inertia):
+def make_body(file, scale, density, inertia):
     v, f = igl.read_triangle_mesh(file)
     v = scale*v
 
@@ -72,7 +73,7 @@ def make_body(file, scale, mass, inertia):
     v = v - c
 
     W = np.c_[v, np.ones(v.shape[0])]
-
+    mass = np.matmul(W.T, vol[:,None]*W) * density
     # TODO: Translate to use quaternion rather than euler angles to avoid gimbal lock
 
     # x0 is the initial state space with x, x_dot, y, y_dot, z, z_dot, yaw, yaw_dot (p), pitch, pitch_dot (q), roll, roll_dot (r) 
@@ -157,7 +158,7 @@ class Aircraft:
         system.system_name = "Aircraft"
         system.problem_name = str(problem_name)
         
-        system_def['cond_params'] = jnp.zeros((0,)) # a length-0 array
+        system_def['cond_param'] = jnp.zeros((0,)) # a length-0 array
         system_def['external_forces'] = {}
         system_def["contact_stiffness"] = 1000000.0
         system_def['airplane'] = {}
@@ -171,11 +172,12 @@ class Aircraft:
         if problem_name == 'generic_airplane':
             scale = 1
 
-            mass = 3*np.eye(3)
-            inertia = np.eye(3)
+            #why is this a 3x3 rather than a 4x4
+            mass = 3*jnp.eye(3)
+            inertia = jnp.eye(3)
             
             # Add all the necessary bodies
-            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), scale, mass, inertia))
+            bodies.append( make_body( os.path.join(".", "data", "Body1.obj"), scale, 1, inertia))
 
             numBodiesFixed = 0
 
@@ -596,41 +598,52 @@ class Aircraft:
 
     def potential_energy(self, system_def, q):
         # TODO implement
+        #try tracing out behavior here
         qR = q.reshape(-1,12,1)
-
         #q_pos = qR[::2]
         #q_xyz = q_pos[0:2]
-
+        
+        #q_abs = jnp.absolute(qR)
+        q_nonneg = jax.tree_map(lambda x: jnp.maximum(x, 0), qR)
         # Create an array of even indices
-        indices_even = np.arange(0, len(qR), 2)
+        indices_even = jnp.arange(0, len(qR[0]), 2)
 
         # Use np.take to extract elements at even indices
-        q_pos = jnp.take(qR, indices_even)
-        q_xyz = jnp.take(q_pos, jnp.array([0, 1, 2]))
-        massR = system_def['mass'].reshape(-1,3,3)
-        gravity = system_def["gravity"]    
-        c_weighted = massR*q_xyz
-        gravity_energy = -jnp.sum(c_weighted * gravity[None,:])
-        
-        return gravity_energy
-   
-    
-    def ke_error(self, system_def, q, q_dot):
-        q_dotR = q_dot.reshape(-1,12,1)
+        q_pos = jnp.take(q_nonneg, indices_even)
+        q_xyz1 = jnp.take(q_pos, np.array([0, 1, 2]))
+        q_xyz = jnp.append(q_xyz1, 1)
+
         massR = system_def['mass'].reshape(-1,4,4)
-        A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_dotR
+        gravity = system_def["gravity"]
+        gravity_app = jnp.append(gravity, 1)
+        c_weighted = massR*q_xyz
+        
+        gravity_energy = -jnp.sum(c_weighted * gravity_app[None,:])
+      
+        return gravity_energy
+        
+    def ke_error(self, system_def, q, q_dot):
+        #changed dimensions here
+        #q_dotR = q_dot.reshape(-1,12,1)
+        q_dotR = q_dot.reshape(-1,3,4)
+        #legit just killing the last dimension here not sure if great idea
+        q_new = q_dotR[:3]
+        #is this supposed to be a 4x4??
+        massR = system_def['mass'].reshape(-1,4,4)
+        A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_new
         Ke_offset = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
 
         return Ke_offset
     
+    
     def action(self, system, system_def, q):
         # TODO add all forces
-        print("tvtv", type(q))
-        PE = system.potential_energy(system_def, q)
-        ke_transl = system.ke_translation(system_def, q)
-        ke_rot = system.ke_rotational(system_def, q)
-        KE = ke_transl + ke_rot
-        lagrangian = KE + PE
+        PE = self.potential_energy(system_def, q)
+        ke_transl = self.ke_translation(system_def, q)
+        ke_rot = self.ke_rotational(system_def, q)
+        KE = ke_transl + ke_rot       
+      
+        lagrangian = KE+PE
         n_aero = 2
         n_thrust = 0
         windx = system_def['external_forces']['wind_strength_x']
@@ -644,10 +657,18 @@ class Aircraft:
     
         # aero_transforce = aero_data['F_b']
         # aero_rotmoment = aero_data['M_b']
+
+       
+        aero_data._calculate_vortex_strengths()
+        aero_data._calculate_forces()
+        aero_transforce = aero_data.force_total_inviscid_geometry
+        aero_rotmoment = aero_data.moment_total_inviscid_geometry
+
         #not exactly sure right values here
         aero_transforce = aero_data._calculate_forces().forces_inviscid_geometry
         
         aero_rotmoment = aero_data._calculate_forces().moments_inviscid_geometry
+
 
         
         thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
@@ -657,23 +678,27 @@ class Aircraft:
         dis_aero_rotation = system.dissipation_fnc(n_aero, aero_rotmoment, q, "rotation")
         dis_thrust_left = system.dissipation_fnc(n_thrust, thrust_force_left, q, "translation")
         dis_thrust_right = system.dissipation_fnc(n_thrust, thrust_force_right, q, "translation")
+
         dissipation = dis_aero_translation + dis_aero_rotation + dis_thrust_left + dis_thrust_right
+       
         return lagrangian + dissipation
+       
+        
 
     def ke_translation(self, system_def, q):
         qR = q.reshape(-1,12,1)
         velocity = jnp.array([qR[-1,1,1], qR[-1,3,1], qR[-1,5,1]])
-        velocity_reshaped = jnp.expand_dims(velocity, axis=(0, 2))
-        massR = system_def['mass'].reshape(-1,3,3)
-        ke_translational = 0.5*jnp.transpose(velocity)*massR*velocity
-
+        #velocity_reshaped = jnp.expand_dims(velocity, axis=(0, 2))
+        velocity = jnp.append(velocity, 1)
+        massR = system_def['mass'].reshape(-1,4,4)
+        ke_translational = 0.5* jnp.dot(jnp.matmul(jnp.transpose(velocity),massR),velocity)
         return ke_translational
     
     def ke_rotational(self, system_def, q):
         qR = q.reshape(-1,12,1)
         omega = jnp.array([qR[-1,7,1], qR[-1,9,1], qR[-1,11,1]])
         inertiaR = system_def['inertia'].reshape(-1, 3, 3)
-        ke_rot = 0.5*jnp.transpose(omega)*inertiaR*omega
+        ke_rot = 0.5 * jnp.matmul(jnp.matmul(jnp.transpose(omega),inertiaR),omega)
         return ke_rot
     
     def dissipation_fnc(self, n, c, q, style):
@@ -684,7 +709,9 @@ class Aircraft:
             q_dot = jnp.array([qR[-1,7,1], qR[-1,9,1], qR[-1,11,1]])
         else:
             print("Specified style not found. Use either ''translation'' or ''rotation'' as style name")
-        D = 1/(n+1)*c*q_dot
+
+        D = 1/(n+1)*jnp.dot(c,q_dot)
+        
         return D
 
 

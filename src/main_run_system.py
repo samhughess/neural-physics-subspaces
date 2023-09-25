@@ -206,6 +206,7 @@ def main():
 
         # print energy
         if eval_energy_every:
+            
             E = eval_potential_energy(system_def, int_state['q_t'])
             E_str = f"Potential energy: {E}"
             psim.TextUnformatted(E_str)

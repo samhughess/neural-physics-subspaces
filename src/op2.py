@@ -52,6 +52,7 @@ class OperatingPoint2(AeroSandboxObject):
         self.p = p
         self.q = q
         self.r = r
+        self.density = self.atmosphere.density()
 
     @property
     def state(self) -> Dict[str, Union[float, np.ndarray]]:
@@ -425,13 +426,13 @@ class OperatingPoint2(AeroSandboxObject):
         Returns: a 3x3 rotation matrix.
 
         """
-        print("pugg", jnp.radians(-self.alpha))
+       
         alpha_rotation = rotations2.rotation_matrix_3D(
-            angle=jnp.radians(-self.alpha),
+            angle=np.radians(-self.alpha),
             axis="y",
         )
         beta_rotation = rotations2.rotation_matrix_3D(
-            angle=jnp.radians(self.beta),
+            angle=np.radians(self.beta),
             axis="z",
         )
         axes_flip = rotations2.rotation_matrix_3D(
@@ -440,20 +441,24 @@ class OperatingPoint2(AeroSandboxObject):
         )
         # Since in geometry axes, X is downstream by convention, while in wind axes, X is upstream by convention.
         # Same with Z being up/down respectively.
-        print("getting", type(axes_flip))
+      
         temp = jnp.matmul(axes_flip,alpha_rotation)
-       
+        
         r = jnp.matmul(temp,beta_rotation) # where "@" is the matrix multiplication operator
-
+        #problem here is the alpha rotation value 
+        
         return r
 
     def compute_freestream_direction_geometry_axes(self):
         # Computes the freestream direction (direction the wind is GOING TO) in the geometry axes
+        #return self.compute_rotation_matrix_wind_to_geometry() @ np.array([-1, 0, 0])
+       
         return self.compute_rotation_matrix_wind_to_geometry() @ np.array([-1, 0, 0])
 
     def compute_freestream_velocity_geometry_axes(self):
         # Computes the freestream velocity vector (direction the wind is GOING TO) in geometry axes
         return self.compute_freestream_direction_geometry_axes() * self.velocity
+        
 
     def compute_rotation_velocity_geometry_axes(self, points):
         # Computes the effective velocity-due-to-rotation at a set of points.

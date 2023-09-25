@@ -22,10 +22,10 @@ def proximal_func(system, system_def, timestep_h, q_tm1, q_t, q_tp1, subspace_fn
         q_tp1 = subspace_fn(system_def, q_tp1)
 
     # q_inertial = 2 * q_t - q_tm1
-
+    print('hey332', type(system_def) )
     # l2_term = system.ke_error(system_def, q_inertial, q_tp1 - q_inertial)
-    action = system.energy(system_def, q_t, q_tp1)
-
+    action = system.action(system_def, q_t, q_tp1)
+    
     # return l2_term + action
     return action
 
