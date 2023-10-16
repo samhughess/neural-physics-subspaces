@@ -557,17 +557,18 @@ class LiftingLine(ImplicitAnalysis):
         # Set up implicit solve (explicit is not possible for general nonlinear problem)
         #need to change to jax; think found different workaround last time (edit later)
         #self.vortex_strengths = self.opti.variable(self.n_panels)
-        self.vortex_strengths = jnp.array([[1],[1],[1],[1]])
+        self.vortex_strengths = jnp.array([1,1,1,1])
         #self.opti.set_initial(self.vortex_strengths, 0)
         self._setup_geometry()
         # Find velocities
-        print('get89' ,jnp.shape(self.vortex_strengths))
+      
         self.induced_velocities = jnp.stack((
-            jnp.dot(self.Vij_x, self.vortex_strengths),
-            jnp.dot(self.Vij_y, self.vortex_strengths),
-            jnp.dot(self.Vij_z, self.vortex_strengths),
+            (self.Vij_x @ self.vortex_strengths),
+            (self.Vij_y @ self.vortex_strengths),
+            (self.Vij_z @self.vortex_strengths),
         ), axis=-1)
 
+        
         # self.induced_velocities = cas.horzcat(
         #     self.Vij_x @ self.vortex_strengths,
         #     self.Vij_y @ self.vortex_strengths,
@@ -586,6 +587,7 @@ class LiftingLine(ImplicitAnalysis):
         #             self.velocities[:, 2] * -self.local_forward_directions[:, 2]
         #     )
         # ) * (180 / cas.pi)
+     
         self.velocity_magnitudes = jnp.sqrt(
             self.velocities[:, 0] ** 2 +
             self.velocities[:, 1] ** 2 +
@@ -629,12 +631,15 @@ class LiftingLine(ImplicitAnalysis):
         # self.CL_locals = cas.vertcat(*CL_locals)
         # self.CDp_locals = cas.vertcat(*CDp_locals)
         # self.Cm_locals = cas.vertcat(*Cm_locals)
-
+       
+       
         self.Vi_cross_li = jnp.stack((
-            self.velocities[:, 1] * self.vortex_bound_leg[:, 2] - self.velocities[:, 2] * self.vortex_bound_leg[:, 1],
+            self.velocities[:, 1] * self.vortex_bound_leg[:, 2] - self.velocities[:,2] * self.vortex_bound_leg[:, 1],
             self.velocities[:, 2] * self.vortex_bound_leg[:, 0] - self.velocities[:, 0] * self.vortex_bound_leg[:, 2],
             self.velocities[:, 0] * self.vortex_bound_leg[:, 1] - self.velocities[:, 1] * self.vortex_bound_leg[:, 0]
         ), axis=-1)
+        
+        
         # self.Vi_cross_li = cas.horzcat(
         #     self.velocities[:, 1] * self.vortex_bound_leg[:, 2] - self.velocities[:, 2] * self.vortex_bound_leg[:, 1],
         #     self.velocities[:, 2] * self.vortex_bound_leg[:, 0] - self.velocities[:, 0] * self.vortex_bound_leg[:, 2],
@@ -660,14 +665,21 @@ class LiftingLine(ImplicitAnalysis):
         if self.verbose:
             print("Calculating induced forces...")
         #guessing want a 4x3 here
-        self.forces_inviscid_geometry = self.op_point.density * self.Vi_cross_li * self.vortex_strengths
+        
+        self.forces_inviscid_geometry = self.op_point.density * self.Vi_cross_li
         
         #want this value (pretty sure want this to be a 1x3)
-        self.force_total_inviscid_geometry = cas.vertcat(
-            cas.sum1(self.forces_inviscid_geometry[:, 0]),
-            cas.sum1(self.forces_inviscid_geometry[:, 1]),
-            cas.sum1(self.forces_inviscid_geometry[:, 2]),
-        )  # Remember, this is in GEOMETRY AXES, not WIND AXES or BODY AXES.
+        # self.force_total_inviscid_geometry = cas.vertcat(
+        #     cas.sum1(self.forces_inviscid_geometry[:, 0]),
+        #     cas.sum1(self.forces_inviscid_geometry[:, 1]),
+        #     cas.sum1(self.forces_inviscid_geometry[:, 2]),
+        # )  # Remember, this is in GEOMETRY AXES, not WIND AXES or BODY AXES.
+        self.force_total_inviscid_geometry = jnp.array([
+            jnp.sum(self.forces_inviscid_geometry[:, 0]),
+            jnp.sum(self.forces_inviscid_geometry[:, 1]),
+            jnp.sum(self.forces_inviscid_geometry[:, 2]),
+        ])
+        
         if self.run_symmetric:
             forces_inviscid_geometry_from_symmetry = cas.if_else(
                 self.use_symmetry,
@@ -681,22 +693,37 @@ class LiftingLine(ImplicitAnalysis):
             )
             force_total_inviscid_geometry += force_total_inviscid_geometry_from_symmetry
        
-        self.force_total_inviscid_wind = cas.transpose(
-            self.op_point.compute_rotation_matrix_wind_to_geometry()) @ force_total_inviscid_geometry
+        # self.force_total_inviscid_wind = cas.transpose(
+        #     self.op_point.compute_rotation_matrix_wind_to_geometry()) @ force_total_inviscid_geometry
 
         if self.verbose:
             print("Calculating induced moments...")
         
-        self.moments_inviscid_geometry = cas.cross(
-            cas.transpose(cas.transpose(self.vortex_centers) - self.airplane.xyz_ref),
-            self.forces_inviscid_geometry
-        )
-        #also want this value
-        self.moment_total_inviscid_geometry = cas.vertcat(
-            cas.sum1(self.moments_inviscid_geometry[:, 0]),
-            cas.sum1(self.moments_inviscid_geometry[:, 1]),
-            cas.sum1(self.moments_inviscid_geometry[:, 2]),
-        )  # Remember, this is in GEOMETRY AXES, not WIND AXES or BODY AXES.
+        # self.moments_inviscid_geometry = cas.cross(
+        #     cas.transpose(cas.transpose(self.vortex_centers) - self.airplane.xyz_ref),
+        #     self.forces_inviscid_geometry
+        # )
+        # #also want this value
+        # self.moment_total_inviscid_geometry = cas.vertcat(
+        #     cas.sum1(self.moments_inviscid_geometry[:, 0]),
+        #     cas.sum1(self.moments_inviscid_geometry[:, 1]),
+        #     cas.sum1(self.moments_inviscid_geometry[:, 2]),
+        #)  # Remember, this is in GEOMETRY AXES, not WIND AXES or BODY AXES.
+    
+        #repc = jnp.tile(self.airplane.xyz_ref[:, None], 4)
+        # Compute the moments_inviscid_geometry
+        
+        #self.moments_inviscid_geometry = jnp.cross((self.vortex_centers.T - repc), self.forces_inviscid_geometry)
+        self.moments_inviscid_geometry =jnp.cross((self.vortex_centers - self.airplane.xyz_ref),self.forces_inviscid_geometry)
+        # Compute the moment_total_inviscid_geometry
+        
+        self.moment_total_inviscid_geometry = jnp.array([
+            jnp.sum(self.moments_inviscid_geometry[:, 0]),
+            jnp.sum(self.moments_inviscid_geometry[:, 1]),
+            jnp.sum(self.moments_inviscid_geometry[:, 2]),
+            
+])
+
         if self.run_symmetric:
             moments_inviscid_geometry_from_symmetry = cas.if_else(
                 self.use_symmetry,
@@ -709,117 +736,117 @@ class LiftingLine(ImplicitAnalysis):
                 cas.sum1(moments_inviscid_geometry_from_symmetry[:, 2]),
             )
             moment_total_inviscid_geometry += moment_total_inviscid_geometry_from_symmetry
-        self.moment_total_inviscid_wind = cas.transpose(
-            self.op_point.compute_rotation_matrix_wind_to_geometry()) @ moment_total_inviscid_geometry
+        # self.moment_total_inviscid_wind = cas.transpose(
+        #     self.op_point.compute_rotation_matrix_wind_to_geometry()) @ moment_total_inviscid_geometry
 
-        if self.verbose:
-            print("Calculating profile forces...")
-        self.forces_profile_geometry = (
-                (0.5 * self.op_point.density * self.velocity_magnitudes * self.velocities)
-                * self.CDp_locals * self.areas
-        )
-        force_total_profile_geometry = cas.vertcat(
-            cas.sum1(self.forces_profile_geometry[:, 0]),
-            cas.sum1(self.forces_profile_geometry[:, 1]),
-            cas.sum1(self.forces_profile_geometry[:, 2]),
-        )
-        if self.run_symmetric:
-            forces_profile_geometry_from_symmetry = cas.if_else(
-                self.use_symmetry,
-                reflect_over_XZ_plane(self.forces_profile_geometry),
-                0
-            )
-            force_total_profile_geometry_from_symmetry = cas.vertcat(
-                cas.sum1(forces_profile_geometry_from_symmetry[:, 0]),
-                cas.sum1(forces_profile_geometry_from_symmetry[:, 1]),
-                cas.sum1(forces_profile_geometry_from_symmetry[:, 2]),
-            )
-            force_total_profile_geometry += force_total_profile_geometry_from_symmetry
-        self.force_total_profile_wind = cas.transpose(
-            self.op_point.compute_rotation_matrix_wind_to_geometry()) @ force_total_profile_geometry
+        # if self.verbose:
+        #     print("Calculating profile forces...")
+        # self.forces_profile_geometry = (
+        #         (0.5 * self.op_point.density * self.velocity_magnitudes * self.velocities)
+        #         * self.CDp_locals * self.areas
+        # )
+        # force_total_profile_geometry = cas.vertcat(
+        #     cas.sum1(self.forces_profile_geometry[:, 0]),
+        #     cas.sum1(self.forces_profile_geometry[:, 1]),
+        #     cas.sum1(self.forces_profile_geometry[:, 2]),
+        # )
+        # if self.run_symmetric:
+        #     forces_profile_geometry_from_symmetry = cas.if_else(
+        #         self.use_symmetry,
+        #         reflect_over_XZ_plane(self.forces_profile_geometry),
+        #         0
+        #     )
+        #     force_total_profile_geometry_from_symmetry = cas.vertcat(
+        #         cas.sum1(forces_profile_geometry_from_symmetry[:, 0]),
+        #         cas.sum1(forces_profile_geometry_from_symmetry[:, 1]),
+        #         cas.sum1(forces_profile_geometry_from_symmetry[:, 2]),
+        #     )
+        #     force_total_profile_geometry += force_total_profile_geometry_from_symmetry
+        # self.force_total_profile_wind = cas.transpose(
+        #     self.op_point.compute_rotation_matrix_wind_to_geometry()) @ force_total_profile_geometry
 
-        if self.verbose:
-            print("Calculating profile moments...")
-        self.moments_profile_geometry = cas.cross(
-            cas.transpose(cas.transpose(self.vortex_centers) - self.airplane.xyz_ref),
-            self.forces_profile_geometry
-        )
-        moment_total_profile_geometry = cas.vertcat(
-            cas.sum1(self.moments_profile_geometry[:, 0]),
-            cas.sum1(self.moments_profile_geometry[:, 1]),
-            cas.sum1(self.moments_profile_geometry[:, 2]),
-        )
-        if self.run_symmetric:
-            moments_profile_geometry_from_symmetry = cas.if_else(
-                self.use_symmetry,
-                -reflect_over_XZ_plane(self.moments_profile_geometry),
-                0
-            )
-            moment_total_profile_geometry_from_symmetry = cas.vertcat(
-                cas.sum1(moments_profile_geometry_from_symmetry[:, 0]),
-                cas.sum1(moments_profile_geometry_from_symmetry[:, 1]),
-                cas.sum1(moments_profile_geometry_from_symmetry[:, 2]),
-            )
-            moment_total_profile_geometry += moment_total_profile_geometry_from_symmetry
-        self.moment_total_profile_wind = cas.transpose(
-            self.op_point.compute_rotation_matrix_wind_to_geometry()) @ moment_total_profile_geometry
+        # if self.verbose:
+        #     print("Calculating profile moments...")
+        # self.moments_profile_geometry = cas.cross(
+        #     cas.transpose(cas.transpose(self.vortex_centers) - self.airplane.xyz_ref),
+        #     self.forces_profile_geometry
+        # )
+        # moment_total_profile_geometry = cas.vertcat(
+        #     cas.sum1(self.moments_profile_geometry[:, 0]),
+        #     cas.sum1(self.moments_profile_geometry[:, 1]),
+        #     cas.sum1(self.moments_profile_geometry[:, 2]),
+        # )
+        # if self.run_symmetric:
+        #     moments_profile_geometry_from_symmetry = cas.if_else(
+        #         self.use_symmetry,
+        #         -reflect_over_XZ_plane(self.moments_profile_geometry),
+        #         0
+        #     )
+        #     moment_total_profile_geometry_from_symmetry = cas.vertcat(
+        #         cas.sum1(moments_profile_geometry_from_symmetry[:, 0]),
+        #         cas.sum1(moments_profile_geometry_from_symmetry[:, 1]),
+        #         cas.sum1(moments_profile_geometry_from_symmetry[:, 2]),
+        #     )
+        #     moment_total_profile_geometry += moment_total_profile_geometry_from_symmetry
+        # self.moment_total_profile_wind = cas.transpose(
+        #     self.op_point.compute_rotation_matrix_wind_to_geometry()) @ moment_total_profile_geometry
 
-        if self.verbose:
-            print("Calculating pitching moments...")
-        bound_leg_YZ = self.vortex_bound_leg
-        bound_leg_YZ[:, 0] = 0
-        self.moments_pitching_geometry = (
-                (0.5 * self.op_point.density * self.velocity_magnitudes ** 2) *
-                self.Cm_locals * self.chords ** 2 * bound_leg_YZ
-        )
-        moment_total_pitching_geometry = cas.vertcat(
-            cas.sum1(self.moments_pitching_geometry[:, 0]),
-            cas.sum1(self.moments_pitching_geometry[:, 1]),
-            cas.sum1(self.moments_pitching_geometry[:, 2]),
-        )
-        if self.run_symmetric:
-            moments_pitching_geometry_from_symmetry = cas.if_else(
-                self.use_symmetry,
-                -reflect_over_XZ_plane(self.moments_pitching_geometry),
-                0
-            )
-            moment_total_pitching_geometry_from_symmetry = cas.vertcat(
-                cas.sum1(moments_pitching_geometry_from_symmetry[:, 0]),
-                cas.sum1(moments_pitching_geometry_from_symmetry[:, 1]),
-                cas.sum1(moments_pitching_geometry_from_symmetry[:, 2]),
-            )
-            moment_total_pitching_geometry += moment_total_pitching_geometry_from_symmetry
-        self.moment_total_pitching_wind = cas.transpose(
-            self.op_point.compute_rotation_matrix_wind_to_geometry()) @ moment_total_pitching_geometry
+        # if self.verbose:
+        #     print("Calculating pitching moments...")
+        # bound_leg_YZ = self.vortex_bound_leg
+        # bound_leg_YZ[:, 0] = 0
+        # self.moments_pitching_geometry = (
+        #         (0.5 * self.op_point.density * self.velocity_magnitudes ** 2) *
+        #         self.Cm_locals * self.chords ** 2 * bound_leg_YZ
+        # )
+        # moment_total_pitching_geometry = cas.vertcat(
+        #     cas.sum1(self.moments_pitching_geometry[:, 0]),
+        #     cas.sum1(self.moments_pitching_geometry[:, 1]),
+        #     cas.sum1(self.moments_pitching_geometry[:, 2]),
+        # )
+        # if self.run_symmetric:
+        #     moments_pitching_geometry_from_symmetry = cas.if_else(
+        #         self.use_symmetry,
+        #         -reflect_over_XZ_plane(self.moments_pitching_geometry),
+        #         0
+        #     )
+        #     moment_total_pitching_geometry_from_symmetry = cas.vertcat(
+        #         cas.sum1(moments_pitching_geometry_from_symmetry[:, 0]),
+        #         cas.sum1(moments_pitching_geometry_from_symmetry[:, 1]),
+        #         cas.sum1(moments_pitching_geometry_from_symmetry[:, 2]),
+        #     )
+        #     moment_total_pitching_geometry += moment_total_pitching_geometry_from_symmetry
+        # self.moment_total_pitching_wind = cas.transpose(
+        #     self.op_point.compute_rotation_matrix_wind_to_geometry()) @ moment_total_pitching_geometry
 
-        if self.verbose:
-            print("Calculating total forces and moments...")
-        self.force_total_wind = self.force_total_inviscid_wind + self.force_total_profile_wind
-        self.moment_total_wind = self.moment_total_inviscid_wind + self.moment_total_profile_wind
+        # if self.verbose:
+        #     print("Calculating total forces and moments...")
+        # self.force_total_wind = self.force_total_inviscid_wind + self.force_total_profile_wind
+        # self.moment_total_wind = self.moment_total_inviscid_wind + self.moment_total_profile_wind
 
-        # Calculate dimensional forces
-        self.lift_force = -self.force_total_wind[2]
-        self.drag_force = -self.force_total_wind[0]
-        self.drag_force_induced = -self.force_total_inviscid_wind[0]
-        self.drag_force_profile = -self.force_total_profile_wind[0]
-        self.side_force = self.force_total_wind[1]
+        # # Calculate dimensional forces
+        # self.lift_force = -self.force_total_wind[2]
+        # self.drag_force = -self.force_total_wind[0]
+        # self.drag_force_induced = -self.force_total_inviscid_wind[0]
+        # self.drag_force_profile = -self.force_total_profile_wind[0]
+        # self.side_force = self.force_total_wind[1]
 
-        # Calculate nondimensional forces
-        q = self.op_point.dynamic_pressure()
-        s_ref = self.airplane.s_ref
-        b_ref = self.airplane.b_ref
-        c_ref = self.airplane.c_ref
-        self.CL = self.lift_force / q / s_ref
-        self.CD = self.drag_force / q / s_ref
-        self.CDi = self.drag_force_induced / q / s_ref
-        self.CDp = self.drag_force_profile / q / s_ref
-        self.CY = self.side_force / q / s_ref
-        self.Cl = self.moment_total_wind[0] / q / s_ref / b_ref
-        self.Cm = self.moment_total_wind[1] / q / s_ref / c_ref
-        self.Cn = self.moment_total_wind[2] / q / s_ref / b_ref
+        # # Calculate nondimensional forces
+        # q = self.op_point.dynamic_pressure()
+        # s_ref = self.airplane.s_ref
+        # b_ref = self.airplane.b_ref
+        # c_ref = self.airplane.c_ref
+        # self.CL = self.lift_force / q / s_ref
+        # self.CD = self.drag_force / q / s_ref
+        # self.CDi = self.drag_force_induced / q / s_ref
+        # self.CDp = self.drag_force_profile / q / s_ref
+        # self.CY = self.side_force / q / s_ref
+        # self.Cl = self.moment_total_wind[0] / q / s_ref / b_ref
+        # self.Cm = self.moment_total_wind[1] / q / s_ref / c_ref
+        # self.Cn = self.moment_total_wind[2] / q / s_ref / b_ref
 
-        # Solves divide by zero error
-        self.CL_over_CD = cas.if_else(self.CD == 0, 0, self.CL / self.CD)
+        # # Solves divide by zero error
+        # self.CL_over_CD = cas.if_else(self.CD == 0, 0, self.CL / self.CD)
 
     def calculate_Vij(self,
                       points,  # type: cas.MX
@@ -1020,7 +1047,7 @@ class LiftingLine(ImplicitAnalysis):
             Vij_y += cas.transpose(cas.if_else(self.use_symmetry, cas.transpose(Vij_y_from_symmetry), 0))
             Vij_z += cas.transpose(cas.if_else(self.use_symmetry, cas.transpose(Vij_z_from_symmetry), 0))
 
-        print('test99', jnp.shape(Vij_x))
+        
         return Vij_x, Vij_y, Vij_z
 
     def calculate_fuselage_influences(self,

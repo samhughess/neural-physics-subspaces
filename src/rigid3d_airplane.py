@@ -625,14 +625,16 @@ class Aircraft:
     def ke_error(self, system_def, q, q_dot):
         #changed dimensions here
         #q_dotR = q_dot.reshape(-1,12,1)
-        q_dotR = q_dot.reshape(-1,3,4)
+        q_dotR = q_dot.reshape(-1,4,3)
         #legit just killing the last dimension here not sure if great idea
         q_new = q_dotR[:3]
         #is this supposed to be a 4x4??
         massR = system_def['mass'].reshape(-1,4,4)
-        A = jnp.swapaxes(q_dotR,1,2) @ massR @ q_new
+        print('samtest1', jnp.shape(jnp.swapaxes(q_dotR,1,2)))
+        A = jnp.swapaxes(q_dotR,1,2)@ massR @ q_new
+        
         Ke_offset = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
-
+     
         return Ke_offset
     
     
@@ -665,9 +667,9 @@ class Aircraft:
         aero_rotmoment = aero_data.moment_total_inviscid_geometry
 
         #not exactly sure right values here
-        aero_transforce = aero_data._calculate_forces().forces_inviscid_geometry
+        aero_transforce = aero_data.forces_inviscid_geometry
         
-        aero_rotmoment = aero_data._calculate_forces().moments_inviscid_geometry
+        aero_rotmoment = aero_data.moments_inviscid_geometry
 
 
         
