@@ -327,7 +327,7 @@ class OperatingPoint2(AeroSandboxObject):
 
         The energy altitude is the altitude at which a stationary aircraft would have the same total energy (kinetic
         + gravitational potential) as the aircraft at the current flight condition.
-
+        
         """
         return self.atmosphere.altitude + 1 / (2 * 9.81) * self.velocity ** 2
 
@@ -452,13 +452,11 @@ class OperatingPoint2(AeroSandboxObject):
     def compute_freestream_direction_geometry_axes(self):
         # Computes the freestream direction (direction the wind is GOING TO) in the geometry axes
         #return self.compute_rotation_matrix_wind_to_geometry() @ np.array([-1, 0, 0])
-       
         return self.compute_rotation_matrix_wind_to_geometry() @ np.array([-1, 0, 0])
 
     def compute_freestream_velocity_geometry_axes(self):
         # Computes the freestream velocity vector (direction the wind is GOING TO) in geometry axes
         return self.compute_freestream_direction_geometry_axes() * self.velocity
-        
 
     def compute_rotation_velocity_geometry_axes(self, points):
         # Computes the effective velocity-due-to-rotation at a set of points.
@@ -485,4 +483,5 @@ class OperatingPoint2(AeroSandboxObject):
 
 
 if __name__ == '__main__':
-    op_point = OperatingPoint2(0,0,0)
+    #op_point = OperatingPoint2(0,0,0)
+    op_point = OperatingPoint2(p=0, q=0, r=0, velocity=100, alpha=5, beta=10)

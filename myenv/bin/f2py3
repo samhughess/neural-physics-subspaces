@@ -1,4 +1,4 @@
-#!/Users/kristanmunohilby/Documents/GitHub/neural-physics-subspaces/myenv/bin/python3
+#!/Users/kristanmunohilby/Documents/GitHub/neural-physics-subspaces/myenv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

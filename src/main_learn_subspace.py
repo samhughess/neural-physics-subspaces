@@ -31,7 +31,6 @@ import subspace
 SRC_DIR = os.path.dirname(os.path.realpath(__file__))
 ROOT_DIR = os.path.join(SRC_DIR, "..")
 
-
 def main():
 
     # Build command line arguments
@@ -137,11 +136,9 @@ def main():
 
         # Map the latent state to config space
         q = subspace_f(z)
-        
-       
+        # Test
         E_pot = system.action(system, system_def, q)
         
-
         return z, cond_params, q, E_pot
 
     def batch_repulsion(z_batch, q_batch, t_schedule):

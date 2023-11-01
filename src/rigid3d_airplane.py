@@ -10,7 +10,6 @@ import aerosandbox.numpy as asbnp
 import scipy.spatial.transform as transform
 import jax,ll2,op2
 
-
 #import jax_transformations3d as jaxtran
 
 try:
@@ -627,7 +626,8 @@ class Aircraft:
         q_pos = jnp.take(q_nonneg, indices_even)
         q_xyz1 = jnp.take(q_pos, np.array([0, 1, 2]))
         q_xyz = jnp.append(q_xyz1, 1)
-
+        
+        #mass = system_def['mass']
         massR = self.mass.reshape(-1,4,4)
         gravity = self.gravity
     
@@ -646,7 +646,8 @@ class Aircraft:
         #legit just killing the last dimension here not sure if great idea
         q_new = q_dotR[:3]
         #is this supposed to be a 4x4??
-        massR = system_def['mass'].reshape(-1,4,4)
+        #massR = system_def['mass'].reshape(-1,4,4)
+        massR = self.mass.reshape(-1,4,4)
         
         A = jnp.swapaxes(q_dotR,1,2)@ massR @ q_new
         
@@ -665,9 +666,9 @@ class Aircraft:
         lagrangian = KE+PE
         n_aero = 2
         n_thrust = 0
-        # windx = system_def['external_forces']['wind_strength_x']
-        # windy = system_def['external_forces']['wind_strength_y']
-        # windz = system_def['external_forces']['wind_strength_z']
+        #windx = system_def['external_forces']['wind_strength_x']
+        #windy = system_def['external_forces']['wind_strength_y']
+        #windz = system_def['external_forces']['wind_strength_z']
         windx = self.ext_windx
         windy = self.ext_windy
         windz = self.ext_windz
@@ -683,16 +684,13 @@ class Aircraft:
         aero_data._calculate_vortex_strengths()
         aero_data._calculate_forces()
         
-        aero_transforce = aero_data.force_total_inviscid_geometry
-       
+        aero_transforce = aero_data.force_total_inviscid_geometry  
         aero_rotmoment = aero_data.moment_total_inviscid_geometry
 
         #not exactly sure right values here
-       
-
         
-        # thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
-        # thrust_force_right =  system_def['external_forces']['thrust_strength_right']*jnp.array([-1, 0, 0])
+        #thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
+        #thrust_force_right =  system_def['external_forces']['thrust_strength_right']*jnp.array([-1, 0, 0])
         
         thrust_force_left = self.ext_thrust_left*jnp.array([-1, 0, 0])
         thrust_force_right =  self.ext_thrust_right*jnp.array([-1, 0, 0])
@@ -715,14 +713,16 @@ class Aircraft:
         velocity = jnp.array([qR[-1,1,1], qR[-1,3,1], qR[-1,5,1]])
         #velocity_reshaped = jnp.expand_dims(velocity, axis=(0, 2))
         velocity = jnp.append(velocity, 1)
-        massR = self.mass.reshape(-1,4,4)
+        mass = system_def["mass"]
+        massR = mass.reshape(-1,4,4)
         ke_translational = 0.5* jnp.dot(jnp.matmul(jnp.transpose(velocity),massR),velocity)
         return ke_translational[0]
     
     def ke_rotational(self, system_def, q):
         qR = q.reshape(-1,12,1)
         omega = jnp.array([qR[-1,7,1], qR[-1,9,1], qR[-1,11,1]])
-        inertiaR = self.inertia.reshape(-1, 3, 3)
+        inertia = system_def['inertia']
+        inertiaR = inertia.reshape(-1, 3, 3)
         ke_rot = 0.5 * jnp.matmul(jnp.matmul(jnp.transpose(omega),inertiaR),omega)
         return ke_rot[0]
     

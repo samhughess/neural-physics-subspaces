@@ -1067,19 +1067,19 @@ class LiftingLine(ImplicitAnalysis):
         #not sure if correct array for fuse_cps or radii
         self.fuse_centerline_points = np.array(
             [   [0,0,0,0],
-                [0.25, 0.0, 0.0],
-                [0.5, 0.0, 0.0],
-                [0.75, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
+                [0.25, 0.0, 0.0,0],
+                [0.5, 0.0, 0.0,0],
+                [0.75, 0.0, 0.0,0],
+                [1.0, 0.0, 0.0,0],
             ]
         )
         #self.fuse_radii = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
         self.fuse_radii = np.array(
             [   [0,0,0,0],
-                [0.25, 0.0, 0.0],
-                [0.5, 0.0, 0.0],
-                [0.75, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
+                [0.25, 0.0, 0.0,0],
+                [0.5, 0.0, 0.0,0],
+                [0.75, 0.0, 0.0,0],
+                [1.0, 0.0, 0.0,0],
             ]
             )
         
@@ -1129,7 +1129,7 @@ class LiftingLine(ImplicitAnalysis):
             strengths = freestream_x_component * jnp.diff(areas)
          
             denominator = 4 * jnp.pi * (source_x ** 2 + source_y ** 2 + source_z ** 2) ** 1.5
-        
+
             u = jnp.transpose(strengths @ jnp.transpose(source_x / denominator))
             v = jnp.transpose(strengths @ jnp.transpose(source_y / denominator))
             w = jnp.transpose(strengths @ jnp.transpose(source_z / denominator))
