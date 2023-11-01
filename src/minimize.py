@@ -17,6 +17,7 @@ methods = [
 def minimize_nonlinear(func, init_guess, method):
 
     if method == 'JAX-LBFGS':
+       
         res = jax.scipy.optimize.minimize(func,
                                           init_guess,
                                           method='l-bfgs-experimental-do-not-rely-on-this',

@@ -52,7 +52,7 @@ def build_proximal_network_filename_(prefix, system_name, problem_name, subspace
 system_class_registry = {
         'fem' : FEMSystem,
         'rigid3d' : Rigid3DSystem,
-        'airplane' : Aircraft,
+        'airplane' : Aircraft(),
         'pendulum' : Pendulum
     }
 

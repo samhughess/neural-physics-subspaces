@@ -48,7 +48,7 @@ def main():
 
     # Build the system object
     system, system_def = config.construct_system_from_name(args.system_name, args.problem_name)
-
+    system.update(system_def)
     # Initialize polyscope
     ps.init()
     ps.set_ground_plane_mode('none')

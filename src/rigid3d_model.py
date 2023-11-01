@@ -263,7 +263,7 @@ class Rigid3DSystem:
     def potential_energy(self, system_def, q):
         
         qRFull = jnp.concatenate((system_def['fixed_pos'],q)).reshape(-1,4,3)
-
+        
         ###########
 
         joint_energy = 0.0

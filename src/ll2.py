@@ -680,18 +680,20 @@ class LiftingLine(ImplicitAnalysis):
             jnp.sum(self.forces_inviscid_geometry[:, 2]),
         ])
         
-        if self.run_symmetric:
-            forces_inviscid_geometry_from_symmetry = cas.if_else(
-                self.use_symmetry,
-                reflect_over_XZ_plane(self.forces_inviscid_geometry),
-                0
-            )
-            force_total_inviscid_geometry_from_symmetry = cas.vertcat(
-                cas.sum1(forces_inviscid_geometry_from_symmetry[:, 0]),
-                cas.sum1(forces_inviscid_geometry_from_symmetry[:, 1]),
-                cas.sum1(forces_inviscid_geometry_from_symmetry[:, 2]),
-            )
-            force_total_inviscid_geometry += force_total_inviscid_geometry_from_symmetry
+        print('heysam3', jnp.shape(self.forces_inviscid_geometry), jnp.shape(self.force_total_inviscid_geometry))
+        
+        # if self.run_symmetric:
+        #     forces_inviscid_geometry_from_symmetry = cas.if_else(
+        #         self.use_symmetry,
+        #         reflect_over_XZ_plane(self.forces_inviscid_geometry),
+        #         0
+        #     )
+        #     force_total_inviscid_geometry_from_symmetry = cas.vertcat(
+        #         cas.sum1(forces_inviscid_geometry_from_symmetry[:, 0]),
+        #         cas.sum1(forces_inviscid_geometry_from_symmetry[:, 1]),
+        #         cas.sum1(forces_inviscid_geometry_from_symmetry[:, 2]),
+        #     )
+        #     force_total_inviscid_geometry += force_total_inviscid_geometry_from_symmetry
        
         # self.force_total_inviscid_wind = cas.transpose(
         #     self.op_point.compute_rotation_matrix_wind_to_geometry()) @ force_total_inviscid_geometry
@@ -946,7 +948,7 @@ class LiftingLine(ImplicitAnalysis):
         b_dot_u = jnp.where(b_cross_u_squared < epsilon, b_dot_u + 1, b_dot_u)
         # Calculate Vij
         term1 = (norm_a_inv + norm_b_inv) / (norm_a * norm_b + a_dot_b)
-        print('pug77', jnp.shape(norm_a_inv))
+     
         term2 = norm_a_inv / (norm_a - a_dot_u)
         term3 = norm_b_inv / (norm_b - b_dot_u)
 

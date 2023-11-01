@@ -147,17 +147,26 @@ def bodiesToStructOfArrays(bodies):
 
     return out_struct, n_bodies
 
-class Aircraft:
 
+class Aircraft:
+    
+    def update(self, system_def):
+        self.mass = system_def['mass']
+        self.gravity = system_def['gravity']
+        self.inertia = system_def['inertia']
+        self.ext_windx = system_def['external_forces']['wind_strength_x']
+        self.ext_windy = system_def['external_forces']['wind_strength_y']
+        self.ext_windz = system_def['external_forces']['wind_strength_z']
+        self.ext_thrust_left = system_def['external_forces']['thrust_strength_left']
+        self.ext_thrust_right =  system_def['external_forces']['thrust_strength_right']
+    
     @staticmethod
     def construct(problem_name):
         system_def = {}
         system = Aircraft()
-
         # Chosen default parameters:
         system.system_name = "Aircraft"
         system.problem_name = str(problem_name)
-        
         system_def['cond_param'] = jnp.zeros((0,)) # a length-0 array
         system_def['external_forces'] = {}
         system_def["contact_stiffness"] = 1000000.0
@@ -581,7 +590,10 @@ class Aircraft:
         system_def['fixed_pos'] = posFixed
         system_def['rest_pos'] = pos
         system_def['init_pos'] = pos
+       
         system_def['mass'] = mass
+     
+
         system_def['inertia'] = inertia
 
         system_def['interesting_states'] = system_def['init_pos'][None,:]
@@ -596,9 +608,12 @@ class Aircraft:
 
     # These define the core physics of our system
 
+
+        
     def potential_energy(self, system_def, q):
-        # TODO implement
-        #try tracing out behavior here
+  
+        #used the following line when not simulating
+        #self.update(system_def)
         qR = q.reshape(-1,12,1)
         #q_pos = qR[::2]
         #q_xyz = q_pos[0:2]
@@ -613,8 +628,9 @@ class Aircraft:
         q_xyz1 = jnp.take(q_pos, np.array([0, 1, 2]))
         q_xyz = jnp.append(q_xyz1, 1)
 
-        massR = system_def['mass'].reshape(-1,4,4)
-        gravity = system_def["gravity"]
+        massR = self.mass.reshape(-1,4,4)
+        gravity = self.gravity
+    
         gravity_app = jnp.append(gravity, 1)
         c_weighted = massR*q_xyz
         
@@ -625,12 +641,13 @@ class Aircraft:
     def ke_error(self, system_def, q, q_dot):
         #changed dimensions here
         #q_dotR = q_dot.reshape(-1,12,1)
+        #changed this to get working so check
         q_dotR = q_dot.reshape(-1,4,3)
         #legit just killing the last dimension here not sure if great idea
         q_new = q_dotR[:3]
         #is this supposed to be a 4x4??
         massR = system_def['mass'].reshape(-1,4,4)
-        print('samtest1', jnp.shape(jnp.swapaxes(q_dotR,1,2)))
+        
         A = jnp.swapaxes(q_dotR,1,2)@ massR @ q_new
         
         Ke_offset = 0.5*jnp.sum(jnp.trace(A, axis1=1, axis2=2))
@@ -644,45 +661,51 @@ class Aircraft:
         ke_transl = self.ke_translation(system_def, q)
         ke_rot = self.ke_rotational(system_def, q)
         KE = ke_transl + ke_rot       
-      
+        print('test5', jnp.shape(ke_transl), jnp.shape(ke_rot))
         lagrangian = KE+PE
         n_aero = 2
         n_thrust = 0
-        windx = system_def['external_forces']['wind_strength_x']
-        windy = system_def['external_forces']['wind_strength_y']
-        windz = system_def['external_forces']['wind_strength_z']
+        # windx = system_def['external_forces']['wind_strength_x']
+        # windy = system_def['external_forces']['wind_strength_y']
+        # windz = system_def['external_forces']['wind_strength_z']
+        windx = self.ext_windx
+        windy = self.ext_windy
+        windz = self.ext_windz
         wind = jnp.array([windx, windy, windz])
      
         #need to figure out what looking for here since lifting line has no return value
 
-        aero_data = liftinglinemethod(system.airplane, q, wind)
+        aero_data = liftinglinemethod(self.airplane, q, wind)
     
         # aero_transforce = aero_data['F_b']
         # aero_rotmoment = aero_data['M_b']
-
        
         aero_data._calculate_vortex_strengths()
         aero_data._calculate_forces()
+        
         aero_transforce = aero_data.force_total_inviscid_geometry
+       
         aero_rotmoment = aero_data.moment_total_inviscid_geometry
 
         #not exactly sure right values here
-        aero_transforce = aero_data.forces_inviscid_geometry
-        
-        aero_rotmoment = aero_data.moments_inviscid_geometry
-
+       
 
         
-        thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
-        thrust_force_right =  system_def['external_forces']['thrust_strength_right']*jnp.array([-1, 0, 0])
-
-        dis_aero_translation = system.dissipation_fnc(n_aero, aero_transforce, q, "translation")
-        dis_aero_rotation = system.dissipation_fnc(n_aero, aero_rotmoment, q, "rotation")
-        dis_thrust_left = system.dissipation_fnc(n_thrust, thrust_force_left, q, "translation")
-        dis_thrust_right = system.dissipation_fnc(n_thrust, thrust_force_right, q, "translation")
+        # thrust_force_left = system_def['external_forces']['thrust_strength_left']*jnp.array([-1, 0, 0])
+        # thrust_force_right =  system_def['external_forces']['thrust_strength_right']*jnp.array([-1, 0, 0])
+        
+        thrust_force_left = self.ext_thrust_left*jnp.array([-1, 0, 0])
+        thrust_force_right =  self.ext_thrust_right*jnp.array([-1, 0, 0])
+        
+        #changed from system to self
+        dis_aero_translation = self.dissipation_fnc(n_aero, aero_transforce, q, "translation")
+        dis_aero_rotation = self.dissipation_fnc(n_aero, aero_rotmoment, q, "rotation")
+        dis_thrust_left = self.dissipation_fnc(n_thrust, thrust_force_left, q, "translation")
+        dis_thrust_right = self.dissipation_fnc(n_thrust, thrust_force_right, q, "translation")
 
         dissipation = dis_aero_translation + dis_aero_rotation + dis_thrust_left + dis_thrust_right
        
+        print('test11', jnp.shape(lagrangian), jnp.shape(dissipation))
         return lagrangian + dissipation
        
         
@@ -692,16 +715,16 @@ class Aircraft:
         velocity = jnp.array([qR[-1,1,1], qR[-1,3,1], qR[-1,5,1]])
         #velocity_reshaped = jnp.expand_dims(velocity, axis=(0, 2))
         velocity = jnp.append(velocity, 1)
-        massR = system_def['mass'].reshape(-1,4,4)
+        massR = self.mass.reshape(-1,4,4)
         ke_translational = 0.5* jnp.dot(jnp.matmul(jnp.transpose(velocity),massR),velocity)
-        return ke_translational
+        return ke_translational[0]
     
     def ke_rotational(self, system_def, q):
         qR = q.reshape(-1,12,1)
         omega = jnp.array([qR[-1,7,1], qR[-1,9,1], qR[-1,11,1]])
-        inertiaR = system_def['inertia'].reshape(-1, 3, 3)
+        inertiaR = self.inertia.reshape(-1, 3, 3)
         ke_rot = 0.5 * jnp.matmul(jnp.matmul(jnp.transpose(omega),inertiaR),omega)
-        return ke_rot
+        return ke_rot[0]
     
     def dissipation_fnc(self, n, c, q, style):
         qR = q.reshape(-1,12,1)
